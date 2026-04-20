@@ -50,3 +50,34 @@ let texts: [(originalText: String, britishPhonetization: String, americanPhoneit
   #expect(result.contains("dˈɒlə"))    // "dollar" phoneme
   #expect(result.contains("jˈʊəɹQz"))  // "euro" phoneme
 }
+
+// A hyphen between two alphabetic tokens (no whitespace on either side) must
+// NOT emit the em-dash phoneme — doing so causes Kokoro to insert an audible
+// pause on compound words like "on-device".
+@Test func testHyphen_JoiningCompoundHasNoEmDash() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  let (result, _) = englishG2P.phonemize(text: "on-device inference")
+  #expect(!result.isEmpty)
+  #expect(!result.contains("—"))
+}
+
+@Test func testHyphen_MultiHyphenCompoundHasNoEmDash() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  let (result, _) = englishG2P.phonemize(text: "state-of-the-art model")
+  #expect(!result.isEmpty)
+  #expect(!result.contains("—"))
+}
+
+// A real em-dash surrounded by words must still emit the pause phoneme.
+@Test func testHyphen_EmDashBetweenWordsStillPauses() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  let (result, _) = englishG2P.phonemize(text: "He said—goodbye.")
+  #expect(result.contains("—"))
+}
+
+// A hyphen flanked by whitespace reads as a mid-sentence dash, not a joiner.
+@Test func testHyphen_SpacedHyphenStillPauses() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  let (result, _) = englishG2P.phonemize(text: "first - second")
+  #expect(result.contains("—"))
+}

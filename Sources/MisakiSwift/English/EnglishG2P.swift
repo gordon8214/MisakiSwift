@@ -311,10 +311,52 @@ final public class EnglishG2P {
     let nsString = word as NSString
     let range = NSRange(location: 0, length: nsString.length)
     let matches = EnglishG2P.subtokenizeRegex.matches(in: word, options: [], range: range)
-    
+
     return matches.map { match in
       nsString.substring(with: match.range)
     }
+  }
+
+  // Whether a dash-tagged token is an intra-word hyphen (letters/digits on
+  // both sides with no whitespace) that should phonemize as nothing rather
+  // than as an em-dash pause.
+  private func isWordJoiningHyphen(
+    subtoken: MToken,
+    subtokens: [MToken],
+    subtokenIndex j: Int,
+    outerTokens: [MToken],
+    outerIndex i: Int
+  ) -> Bool {
+    guard !subtoken.text.isEmpty,
+          subtoken.text.allSatisfy({ $0 == "-" }) else {
+      return false
+    }
+
+    let prev: String?
+    if j > 0 {
+      prev = subtokens[j - 1].text
+    } else if i > 0, outerTokens[i - 1].whitespace.isEmpty {
+      prev = outerTokens[i - 1].text
+    } else {
+      prev = nil
+    }
+
+    let next: String?
+    if j + 1 < subtokens.count {
+      next = subtokens[j + 1].text
+    } else if i + 1 < outerTokens.count, outerTokens[i].whitespace.isEmpty {
+      next = outerTokens[i + 1].text
+    } else {
+      next = nil
+    }
+
+    guard let prevLast = prev?.last,
+          let nextFirst = next?.first,
+          prevLast.isLetter || prevLast.isNumber,
+          nextFirst.isLetter || nextFirst.isNumber else {
+      return false
+    }
+    return true
   }
   
   func retokenize(_ tokens: [MToken]) -> [Any] {
@@ -349,7 +391,23 @@ final public class EnglishG2P {
           token.phonemes = ""
           token.`_`.rating = 4
         } else if token.tag == .dash || (token.tag == .punctuation && token.text == "–") {
-          token.phonemes = "—"
+          // A run of ASCII hyphens that sits directly between two
+          // alphanumeric tokens is a word-joining hyphen (e.g. "on-device",
+          // "state-of-the-art", "1-800"). Emitting the "—" phoneme there
+          // makes Kokoro's duration predictor insert a perceptible pause,
+          // which is what upstream Python misaki avoids. Treat these as
+          // zero-phoneme joiners; real em/en dashes still pause.
+          if isWordJoiningHyphen(
+            subtoken: token,
+            subtokens: subtokens,
+            subtokenIndex: j,
+            outerTokens: tokens,
+            outerIndex: i
+          ) {
+            token.phonemes = ""
+          } else {
+            token.phonemes = "—"
+          }
           token.`_`.rating = 3
         } else if let tag = token.tag, EnglishG2P.punctuationTags.contains(tag), !token.text.lowercased().unicodeScalars.allSatisfy({ (97...122).contains(Int($0.value)) }) {
           if let val = EnglishG2P.punctuationTagPhonemes[token.text] {
