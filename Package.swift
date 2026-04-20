@@ -3,6 +3,12 @@
 
 import PackageDescription
 
+// Local fork of MisakiSwift 1.0.6 with two patches:
+//   1) resources use explicit per-file `.copy` entries so the emitted
+//      resource bundle is flat (iOS codesign rejects nested Resources/
+//      inside a BNDL).
+//   2) mlx-swift dep bumped to 0.31+ for the weakly-linked Metal error
+//      domains (upstream mlx-swift #354).
 let package = Package(
   name: "MisakiSwift",
   platforms: [
@@ -16,7 +22,7 @@ let package = Package(
     ),
   ],
   dependencies: [
-    .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.30.2"),
+    .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.31.0"),
     .package(url: "https://github.com/mlalma/MLXUtilsLibrary.git", exact: "0.0.6")
   ],
   targets: [
@@ -28,7 +34,14 @@ let package = Package(
         .product(name: "MLXUtilsLibrary", package: "MLXUtilsLibrary")
      ],
      resources: [
-      .copy("../../Resources/")
+      .copy("../../Resources/gb_bart.safetensors"),
+      .copy("../../Resources/gb_bart_config.json"),
+      .copy("../../Resources/gb_gold.json"),
+      .copy("../../Resources/gb_silver.json"),
+      .copy("../../Resources/us_bart.safetensors"),
+      .copy("../../Resources/us_bart_config.json"),
+      .copy("../../Resources/us_gold.json"),
+      .copy("../../Resources/us_silver.json")
      ]
     ),
     .testTarget(
