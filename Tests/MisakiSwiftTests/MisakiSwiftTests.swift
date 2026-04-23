@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import MisakiSwift
 
@@ -127,4 +128,24 @@ let texts: [(originalText: String, britishPhonetization: String, americanPhoneit
   let (result, _) = englishG2P.phonemize(text: "C.C.H. was engraved")
   #expect(result.contains("sˌiːsˌiːˈAʧ") || result.contains("sˌisˌiˈAʧ"),
           "acronym reading regressed: \(result)")
+}
+
+// EnglishNum2Word's midNumWords table was missing (20, "twenty"), so
+// toCardinal(21..29) fell into the `tensWord = ""` default and returned
+// "-five", "-six", etc. extend_num(..., escape: true) then split on the
+// leading non-letter "-", yielding just the ones word — so "25.10" read
+// as "five point one" instead of "twenty-five point one".
+@Test func testNum2Word_TwentiesCardinals() async throws {
+  let num2Words = EnglishNum2Word()
+  let expectations: [(Decimal, String)] = [
+    (21, "twenty-one"),
+    (25, "twenty-five"),
+    (29, "twenty-nine"),
+    (25.1, "twenty-five point one"),
+    (24.04, "twenty-four point zero four"),
+  ]
+  for (input, expected) in expectations {
+    let actual = num2Words.convert(input)
+    #expect(actual == expected, "convert(\(input)) == '\(actual)', expected '\(expected)'")
+  }
 }
