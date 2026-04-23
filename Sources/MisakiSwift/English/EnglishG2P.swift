@@ -214,26 +214,40 @@ final public class EnglishG2P {
       return true
     }
                             
-    // Simplistic alignment by index to add stress and pre-phonemization features to tokens
-    // TO_DO: Doesn't match the capability of spacy.training.Alignment.from_strings()
+    // Align features to tokens. NLTagger's `.word` unit splits hyphenated or
+    // mixed-class graphemes such as "COVID-19" into multiple subtokens
+    // (["COVID", "-", "19"]), so a single `[X](/Y/)` forced-phoneme feature
+    // can overlap several tokens. Assigning the phoneme to every overlapping
+    // token causes `mergeTokens` to emit it once per subtoken — the phrase
+    // would be spoken N times. Instead, drop the phoneme on the first
+    // overlapping token and leave the rest non-head with an empty phoneme so
+    // `foldLeft`/`mergeTokens` fold them into the head without repeating.
+    // Stress and num_flags still fan out across the whole span.
     for feature in preprocessedText.features {
-      for token in mutableTokens {
-        if token.tokenRange.contains(feature.tokenRange) || feature.tokenRange.contains(token.tokenRange) {
-          switch feature.value {
-            case .int(let int):
-              token.`_`.stress = Double(int)
-            case .double(let double):
-              token.`_`.stress = double
-            case .string(let string):
-              if string.hasPrefix("/") {
-                token.`_`.is_head = true
-                token.phonemes = String(string.dropFirst())
-                token.`_`.rating = 5
-              } else if string.hasPrefix("#") {
-                token.`_`.num_flags = String(string.dropFirst())
-              }
+      let matched = mutableTokens.filter { token in
+        token.tokenRange.contains(feature.tokenRange) || feature.tokenRange.contains(token.tokenRange)
+      }
+      guard let head = matched.first else { continue }
+
+      switch feature.value {
+        case .int(let int):
+          for token in matched { token.`_`.stress = Double(int) }
+        case .double(let double):
+          for token in matched { token.`_`.stress = double }
+        case .string(let string):
+          if string.hasPrefix("/") {
+            let phoneme = String(string.dropFirst())
+            head.`_`.is_head = true
+            head.phonemes = phoneme
+            head.`_`.rating = 5
+            for token in matched.dropFirst() {
+              token.`_`.is_head = false
+              token.phonemes = ""
+              token.`_`.rating = 5
+            }
+          } else if string.hasPrefix("#") {
+            for token in matched { token.`_`.num_flags = String(string.dropFirst()) }
           }
-        }
       }
     }
 

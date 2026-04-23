@@ -81,3 +81,28 @@ let texts: [(originalText: String, britishPhonetization: String, americanPhoneit
   let (result, _) = englishG2P.phonemize(text: "first - second")
   #expect(result.contains("—"))
 }
+
+// A forced-phoneme span whose grapheme gets split by NLTagger into several
+// subtokens (e.g. "COVID-19" → ["COVID", "-", "19"]) must emit the phoneme
+// exactly once. Pre-fix, feature alignment assigned the full phoneme to each
+// overlapping subtoken and mergeTokens concatenated all three copies.
+@Test func testForcedPhoneme_HyphenatedSpanEmittedOnce() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  let phoneme = "kˈoʊvɪd naɪnˈtiːn"
+  let input = "[COVID-19](/\(phoneme)/) is the virus."
+  let (result, _) = englishG2P.phonemize(text: input)
+  let count = result.components(separatedBy: phoneme).count - 1
+  #expect(count == 1, "phoneme appeared \(count) times; expected 1. Full output: \(result)")
+}
+
+// Same scenario on a pure number-letter split without a hyphen character
+// (e.g. "iPhone17" → ["i", "Phone", "17"] via NLTagger's camelCase/digit
+// boundaries). Verifies the fix generalises beyond hyphens.
+@Test func testForcedPhoneme_AlphaNumSpanEmittedOnce() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  let phoneme = "ˈaɪfoʊn sɛvənˈtin"
+  let input = "Got my [iPhone17](/\(phoneme)/) today."
+  let (result, _) = englishG2P.phonemize(text: input)
+  let count = result.components(separatedBy: phoneme).count - 1
+  #expect(count == 1, "phoneme appeared \(count) times; expected 1. Full output: \(result)")
+}
