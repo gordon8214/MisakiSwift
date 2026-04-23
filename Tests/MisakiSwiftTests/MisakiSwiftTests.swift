@@ -106,3 +106,25 @@ let texts: [(originalText: String, britishPhonetization: String, americanPhoneit
   let count = result.components(separatedBy: phoneme).count - 1
   #expect(count == 1, "phoneme appeared \(count) times; expected 1. Full output: \(result)")
 }
+
+// A decimal like "25.10" or "6.17" must not be silently mapped to an empty
+// phoneme by getSpecialCase's dotted-acronym branch. Pre-fix, any N.N where
+// both sides had <3 digits fell into getNNP, which returned an empty
+// phoneme because the token had no letters — dropping the number entirely.
+@Test func testDecimal_NotSilencedByAcronymBranch() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  for input in ["Ubuntu 25.10", "kernel 6.17", "6.12", "24.04", "5.17"] {
+    let (result, _) = englishG2P.phonemize(text: input)
+    #expect(!result.isEmpty, "empty phoneme for '\(input)'")
+    #expect(result.contains("pˈɔɪnt"), "missing 'point' for '\(input)': \(result)")
+  }
+}
+
+// Real dotted acronyms must still hit the getNNP path and produce a
+// letter-by-letter reading.
+@Test func testDottedAcronym_StillSpelledOut() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  let (result, _) = englishG2P.phonemize(text: "C.C.H. was engraved")
+  #expect(result.contains("sˌiːsˌiːˈAʧ") || result.contains("sˌisˌiˈAʧ"),
+          "acronym reading regressed: \(result)")
+}

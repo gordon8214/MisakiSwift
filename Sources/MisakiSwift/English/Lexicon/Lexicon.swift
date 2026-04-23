@@ -198,7 +198,12 @@ final class Lexicon {
       return lookup(target, tag: nil, stress: -0.5, ctx: ctx)
     } else if let sym = Lexicon.symbolSet[word] {
       return lookup(sym, tag: nil, stress: nil, ctx: ctx)
-    } else if word.trimmingCharacters(in: CharacterSet(charactersIn: ".")).contains(".") {
+    } else if word.contains(where: { $0.isLetter }),
+              word.trimmingCharacters(in: CharacterSet(charactersIn: ".")).contains(".") {
+      // Acronyms like "M.R.C.S." or "C.C.H." — each dot-separated chunk is
+      // short. Requires at least one letter so decimal numbers ("25.10",
+      // "6.17") fall through to getNumber instead of being silently
+      // mapped to an empty phoneme by getNNP.
       let parts = word.split(separator: ".")
       if parts.map({ $0.count }).max() ?? 0 < 3 {
         return getNNP(word)
@@ -302,8 +307,8 @@ final class Lexicon {
       return nil
     }
     
-    if pieces.contains(where: { $0 == nil }) { return (nil, nil) }
-    
+    if pieces.isEmpty || pieces.contains(where: { $0 == nil }) { return (nil, nil) }
+
     let joined = Lexicon.applyStress(pieces.compactMap{ $0 }.joined(separator: ""), stress: 0)
     if let joined {
       let ps = joined.replacingLastOccurrence(of: Lexicon.secondaryStress, with: Lexicon.primaryStress)
