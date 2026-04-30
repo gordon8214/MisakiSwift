@@ -471,7 +471,12 @@ final class Lexicon {
         splits = num.split(whereSeparator: { !$0.isLetter }).map(String.init)
       } else {
         if let val = Decimal(string: num) {
-          splits = num2Words.convert(val).split(separator: " ").map(String.init)
+          // num2Words emits hyphenated compounds for 21–99 ("twenty-five"),
+          // which aren't in the lexicon and would fall through to getNNP's
+          // letter-by-letter spelling once getNNP silently drops the hyphen.
+          // Split on any non-letter so the components ("twenty", "five") get
+          // looked up individually, mirroring the `escape: true` branch above.
+          splits = num2Words.convert(val).split(whereSeparator: { !$0.isLetter }).map(String.init)
         } else {
           splits = num.split(whereSeparator: { !$0.isLetter }).map(String.init)
         }

@@ -130,6 +130,40 @@ let texts: [(originalText: String, britishPhonetization: String, americanPhoneit
           "acronym reading regressed: \(result)")
 }
 
+// extend_num's non-escape branch only split num2Words output on space, so
+// hyphenated cardinals like "twenty-five" stayed intact. The lexicon has no
+// entry for "twenty-five" so lookup fell into getNNP, which compactMaps non-
+// letters away and returns the letter-by-letter spelling ("T-W-E-N-T-Y-F-I-V-E").
+// For "$25" that surfaces as each letter spoken individually, followed by
+// "Dollars" from the currency suffix loop. Asserting the absence of the
+// letter-Y phoneme ("wˈaɪ") catches the regression — Y appears only when
+// "twenty-five" is spelled out, never in its cardinal phonemization.
+@Test func testCurrency_DollarTwentyFiveNotSpelledOut() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  let (result, _) = englishG2P.phonemize(text: "Pay $25 for early access today")
+  #expect(!result.isEmpty)
+  #expect(result.contains("dˈɑləɹz"))
+  #expect(!result.contains("wˈaɪ"), "letter-Y phoneme leaked from spell-out fallback: \(result)")
+}
+
+@Test func testCurrency_DollarTwentyFiveNotSpelledOut_British() async throws {
+  let englishG2P = EnglishG2P(british: true)
+  let (result, _) = englishG2P.phonemize(text: "Pay $25 for early access today")
+  #expect(!result.isEmpty)
+  #expect(result.contains("dˈɒlə"))
+  #expect(!result.contains("wˈaɪ"), "letter-Y phoneme leaked from spell-out fallback: \(result)")
+}
+
+// Non-currency sentence-internal two-digit numbers hit the same buggy
+// extend_num path (is_head=false, no currency, count<=3 → `extend_num(num)`
+// without escape). Verify the fix covers that route too.
+@Test func testCardinal_SentenceInternalTwentyFiveNotSpelledOut() async throws {
+  let englishG2P = EnglishG2P(british: false)
+  let (result, _) = englishG2P.phonemize(text: "I have 25 cats")
+  #expect(!result.isEmpty)
+  #expect(!result.contains("wˈaɪ"), "letter-Y phoneme leaked from spell-out fallback: \(result)")
+}
+
 // EnglishNum2Word's midNumWords table was missing (20, "twenty"), so
 // toCardinal(21..29) fell into the `tensWord = ""` default and returned
 // "-five", "-six", etc. extend_num(..., escape: true) then split on the
