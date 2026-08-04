@@ -14,10 +14,25 @@ final public class EnglishG2P {
   static let punctuactions: Set<Character> = Set(";:,.!?—…\"“”")
   
   // spaCy-style punctuation tags https://github.com/explosion/spaCy/blob/master/spacy/glossary.py
+  //
+  // Upstream misaki keys this by spaCy TAG (`PUNCT_TAG_PHONEMES.get(t.tag)`);
+  // this port looks it up by token *text* instead, which works because the three
+  // quote entries are spelled the same either way. Parentheses are not: upstream
+  // maps the tags `-LRB-`/`-RRB-` to "(" and ")", and a tag key can never match
+  // here. They are therefore listed by their literal text.
+  //
+  // They cannot instead be added to `punctuactions` (the fallback filter on the
+  // next branch): upstream's PUNCTS set excludes parentheses, and
+  // `nonQuotePunctuations` derives from it, so widening it would change
+  // `resolveTokens` behaviour too. Kokoro's vocab carries "(" and ")" (ids
+  // 12/13), so without this the characters were filtered to "" and the
+  // parenthetical prosody was lost.
   static let punctuationTagPhonemes: [String: String] = [
       "``": String(UnicodeScalar(8220)!),     // Left double quotation mark
       "\"\"": String(UnicodeScalar(8221)!),   // Right double quotation mark
-      "''": String(UnicodeScalar(8221)!)      // Right double quotation mark
+      "''": String(UnicodeScalar(8221)!),     // Right double quotation mark
+      "(": "(",
+      ")": ")"
   ]
   
   static let nonQuotePunctuations: Set<Character> = Set(punctuactions.filter { !"\"\"\"".contains($0) })
@@ -42,7 +57,19 @@ final public class EnglishG2P {
     let tokenRange: Range<String.Index>
   }
 
-  public init(british: Bool = false, unk: String = "❓") {
+  /// - Parameter unk: emitted for a token that neither the lexicon nor the
+  ///   fallback network could resolve. Defaults to "" to match Kokoro's own
+  ///   `KPipeline`, which constructs misaki with `unk=''` (kokoro/pipeline.py:123).
+  ///
+  ///   The previous "❓" default was never voiced: the character is absent from
+  ///   Kokoro's vocab, so `Tokenizer.tokenize` dropped it — taking the token's
+  ///   separator with it and fusing the neighbouring words. The default (rather
+  ///   than the call site) is the right place to fix it, because BetterTTS
+  ///   builds *two* EnglishG2P instances — one for pre-flight chunk measurement,
+  ///   one inside KokoroSwift for synthesis — and both rely on this default.
+  ///   Changing only one would silently desynchronize their token counts, which
+  ///   is what selects the style vector.
+  public init(british: Bool = false, unk: String = "") {
     self.british = british
     self.tagger = NLTagger(tagSchemes: [.nameTypeOrLexicalClass])
     self.lexicon = Lexicon(british: british)
@@ -564,7 +591,20 @@ final public class EnglishG2P {
       }
     }
 
-    let result = finalTokens.map { ( $0.phonemes ?? self.unk ) + $0.whitespace }.joined()
+    // Mirrors KPipeline.tokens_to_ps (kokoro/pipeline.py:180-181):
+    //
+    //   ''.join((t.phonemes or unk) + (' ' if t.whitespace else '') for t in tokens).strip()
+    //
+    // Emitting `whitespace` verbatim was a bug: a token followed by "\n" (or
+    // "\n\n", or a run of spaces) put those characters into the phoneme string,
+    // and "\n" is absent from Kokoro's 178-entry vocab, so Tokenizer.tokenize
+    // dropped it — fusing the two words with no separator at all. Article text
+    // is mostly line breaks, so this fired constantly. Any non-empty whitespace
+    // run collapses to exactly one space, which IS in the vocab (id 16).
+    let result = finalTokens
+      .map { ($0.phonemes ?? self.unk) + ($0.whitespace.isEmpty ? "" : " ") }
+      .joined()
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     return (result, finalTokens)
   }
 }

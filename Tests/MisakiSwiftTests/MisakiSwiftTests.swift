@@ -112,12 +112,23 @@ let texts: [(originalText: String, britishPhonetization: String, americanPhoneit
 // phoneme by getSpecialCase's dotted-acronym branch. Pre-fix, any N.N where
 // both sides had <3 digits fell into getNNP, which returned an empty
 // phoneme because the token had no letters — dropping the number entirely.
+// The expected spelling is "pYnt", not "pˈɔɪnt". Two reasons, both verified
+// against the data rather than assumed:
+//   1. misaki's US lexicon stores "point" as "pˈYnt" — `Y` is its compressed
+//      diphthong for /ɔɪ/, the same convention that leaves `A`, `I` and `O`
+//      uncompressed in this file's `texts` goldens. Kokoro's vocab carries `Y`.
+//   2. The stress mark is dropped on purpose: Lexicon.getNumber passes
+//      `stress: -2.0` for "point" specifically (Lexicon.swift:508), so a decimal
+//      reads unstressed between its digit groups.
+// The original "pˈɔɪnt" expectation was written from IPA intuition and had never
+// passed. The assertion's intent — a decimal is not silently swallowed by the
+// dotted-acronym branch — is what matters and is preserved.
 @Test func testDecimal_NotSilencedByAcronymBranch() async throws {
   let englishG2P = EnglishG2P(british: false)
   for input in ["Ubuntu 25.10", "kernel 6.17", "6.12", "24.04", "5.17"] {
     let (result, _) = englishG2P.phonemize(text: input)
     #expect(!result.isEmpty, "empty phoneme for '\(input)'")
-    #expect(result.contains("pˈɔɪnt"), "missing 'point' for '\(input)': \(result)")
+    #expect(result.contains("pYnt"), "missing 'point' for '\(input)': \(result)")
   }
 }
 

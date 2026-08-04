@@ -271,11 +271,29 @@ final class Lexicon {
     }
     
     if let phonemeDict = phoneticString as? [String: String?] {
-      var t = getParentTag(tag, token: w)
+      // Mirrors misaki en.py:229-238:
+      //
+      //   if ctx and ctx.future_vowel is None and 'None' in ps: tag = 'None'
+      //   elif tag not in ps:                                   tag = get_parent_tag(tag)
+      //   ps = ps.get(tag, ps['DEFAULT'])
+      //
+      // Two bugs previously lived here. The pre-pause branch assigned "XX",
+      // which is `getParentTag`'s *nil-tag* sentinel and matches no lexicon
+      // key, so it silently fell through to DEFAULT — costing the stressed
+      // phrase-final form of the 32 gold entries that carry a "None" variant
+      // (be/have/this/there/will/would/can/could/…). And `getParentTag` was
+      // applied unconditionally, collapsing VBD/VBN/VBP to VERB *before*
+      // lookup, so homographs keyed on the raw Penn tag — read, wound,
+      // reread, that — could never resolve.
+      let resolvedTag: String?
       if let ctx = ctx, ctx.futureVowel == nil, phonemeDict["None"] != nil {
-        t = "XX"
+        resolvedTag = "None"
+      } else if let rawTag = tag.map({ pennTag(for: $0, token: w) }), phonemeDict[rawTag] != nil {
+        resolvedTag = rawTag
+      } else {
+        resolvedTag = getParentTag(tag, token: w)
       }
-      phoneticString = phonemeDict[t ?? "DEFAULT"] ?? phonemeDict["DEFAULT"] ?? nil
+      phoneticString = phonemeDict[resolvedTag ?? "DEFAULT"] ?? phonemeDict["DEFAULT"] ?? nil
     }
     
     if phoneticString == nil || (isNNP == true && !(phoneticString as? String ?? "").contains(Lexicon.primaryStress)) {
