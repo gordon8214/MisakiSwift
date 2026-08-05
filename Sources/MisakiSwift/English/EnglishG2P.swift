@@ -312,6 +312,8 @@ final public class EnglishG2P {
       }
     }
 
+    EnglishHeteronymResolver.resolve(tokens: mutableTokens)
+
     return mutableTokens
   }
   
