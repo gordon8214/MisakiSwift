@@ -66,11 +66,11 @@ import Testing
 // gold "read" is {ADJ: ɹˈɛd, DEFAULT: ɹˈid, VBD: ɹˈɛd, VBN: ɹˈɛd, VBP: ɹˈɛd} —
 // note there is no VERB key, so the tense-specific tag is the only way in.
 // Upstream misaki gets one from spaCy's en_core_web_sm, which tags "read" in
-// "Yesterday I read the book." as VBD. This port uses NLTagger's
-// .nameTypeOrLexicalClass, which returns the coarse `.verb` for BOTH the past
-// and the infinitive (verified: the tag is identical in the two sentences
-// below). No amount of lookup fixing can recover the distinction — closing this
-// needs a finer-grained POS source than NLTagger.
+// "Yesterday I read the book." as VBD. This port resolves NLTagger's hybrid
+// name/POS scheme against `.lexicalClass`, but the resulting `.verb` is still
+// coarse for BOTH the past and the infinitive (verified: the tag is identical
+// in the two sentences below). No amount of lookup fixing can recover the
+// distinction — closing this needs a finer-grained POS source than NLTagger.
 //
 // Consequence: past-tense "read" is voiced /riːd/ on device and /rɛd/ on the
 // server. Same for "wound" and "reread".

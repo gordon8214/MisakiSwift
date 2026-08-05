@@ -5,7 +5,8 @@ import MLXUtilsLibrary
 // Main G2P pipeline for English text
 final public class EnglishG2P {
   private let british: Bool
-  private let tagger: NLTagger
+  private let nameTypeTagger: NLTagger
+  private let lexicalClassTagger: NLTagger
   private let lexicon: Lexicon
   private let fallback: EnglishFallbackNetwork
   private let unk: String
@@ -79,7 +80,8 @@ final public class EnglishG2P {
   ///   is what selects the style vector.
   public init(british: Bool = false, unk: String = "") {
     self.british = british
-    self.tagger = NLTagger(tagSchemes: [.nameTypeOrLexicalClass])
+    self.nameTypeTagger = NLTagger(tagSchemes: [.nameTypeOrLexicalClass])
+    self.lexicalClassTagger = NLTagger(tagSchemes: [.lexicalClass])
     self.lexicon = Lexicon(british: british)
     self.fallback = EnglishFallbackNetwork(british: british)
     self.unk = unk
@@ -237,15 +239,31 @@ final public class EnglishG2P {
     var mutableTokens: [MToken] = []
     
     // Tokenize and perform part-of-speech tagging
-    tagger.string = preprocessedText.text
-    tagger.setLanguage(.english, range: preprocessedText.text.startIndex..<preprocessedText.text.endIndex)
+    let textRange = preprocessedText.text.startIndex..<preprocessedText.text.endIndex
+    nameTypeTagger.string = preprocessedText.text
+    nameTypeTagger.setLanguage(.english, range: textRange)
+    lexicalClassTagger.string = preprocessedText.text
+    lexicalClassTagger.setLanguage(.english, range: textRange)
     let options: NLTagger.Options = []
-    tagger.enumerateTags(
-      in: preprocessedText.text.startIndex..<preprocessedText.text.endIndex,
+    var lexicalTags: [Range<String.Index>: NLTag] = [:]
+    lexicalClassTagger.enumerateTags(
+      in: textRange,
+      unit: .word,
+      scheme: .lexicalClass,
+      options: options) { tag, tokenRange in
+      lexicalTags[tokenRange] = tag
+      return true
+    }
+
+    nameTypeTagger.enumerateTags(
+      in: textRange,
       unit: .word,
       scheme: .nameTypeOrLexicalClass,
       options: options) { tag, tokenRange in
-      if let tag = tag {
+      if let tag = EnglishTagResolver.resolve(
+        nameTypeOrLexicalClass: tag,
+        lexicalClass: lexicalTags[tokenRange]
+      ) {
         let word = String(preprocessedText.text[tokenRange])
         if tag == .whitespace, let lastToken = mutableTokens.last {
           lastToken.whitespace = word

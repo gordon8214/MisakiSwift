@@ -115,6 +115,15 @@ struct ServerParityTests {
      "ɹəsˈɜɹʧəɹz æt ðə jˌunəvˈɜɹsəTi pˈʌblɪʃt ðɛɹ fˈIndɪŋz lˈæst wˈik."),
     ("She said the results were, in her words, deeply surprising.",
      "ʃˌi sˈɛd ðə ɹəzˈʌlts wɜɹ, ɪn hɜɹ wˈɜɹdz, dˈipli səɹpɹˈIzɪŋ."),
+    ("Watch the live video.",
+     "wˈɑʧ ðə lˈIv vˈɪdiO."),
+    ("The event is live now.",
+     "ði əvˈɛnt ɪz lˈIv nˈW."),
+    ("You may also get a reprieve if you have an older device that doesn't meet " +
+     "Gemini's minimum specifications or if you live in a region where Gemini is not supported.",
+     "jˌu mˈA ˈɔlsO ɡɛt ɐ ɹəpɹˈiv ɪf ju hæv ɐn ˈOldəɹ dəvˈIs ðæt dˈʌzᵊnt mˈit " +
+     "ʤˈɛmənˌIz mˈɪnəməm spˌɛsəfəkˈAʃənz ɔɹ ɪf ju lˈɪv ɪn ɐ ɹˈiʤᵊn wˌɛɹ " +
+     "ʤˈɛmənˌI ɪz nˌɑt səpˈɔɹTᵻd."),
   ]
 
   @Test func localPhonemesMatchTheServerExactly() async throws {
