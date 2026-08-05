@@ -240,7 +240,7 @@ final public class EnglishG2P {
         
       return true
     }
-                            
+
     // Align features to tokens. NLTagger's `.word` unit splits hyphenated or
     // mixed-class graphemes such as "COVID-19" into multiple subtokens
     // (["COVID", "-", "19"]), so a single `[X](/Y/)` forced-phoneme feature
@@ -503,11 +503,27 @@ final public class EnglishG2P {
    
   // Turns the text into phonemes that can then be fed to text-to-speech (TTS) engine for converting to audio
   public func phonemize(text: String, performPreprocess: Bool = true) -> (String, [MToken]) {
+    // Fold line breaks to spaces before anything else.
+    //
+    // Upstream misaki never sees a newline: Kokoro's KPipeline splits input on
+    // `r'\n+'` and phonemizes each piece separately (kokoro/pipeline.py:376).
+    // This port is called directly with multi-line article text, and NLTagger
+    // does NOT treat a bare "\n" as a word boundary — it returns "alpha\nbeta"
+    // as a SINGLE Noun token, which then phonemizes as one compound word
+    // (ˌælfəbˈɛTə) rather than two (ˈælfə bˈATə), shifting their stress too.
+    // Article text is mostly line breaks, so this fused words constantly.
+    //
+    // Length-preserving on purpose: substituting one character for one
+    // character keeps every String.Index in the preprocess feature ranges
+    // valid. Runs of newlines become runs of spaces, which the join at the end
+    // of this method collapses to a single separator.
+    let folded = String(text.map { $0 == "\n" || $0 == "\r" ? " " : $0 })
+
     let pre: PreprocessTuple
     if performPreprocess {
-        pre = self.preprocess(text: text)
+        pre = self.preprocess(text: folded)
     } else {
-        pre = (text: text, tokens: [], features: [])
+        pre = (text: folded, tokens: [], features: [])
     }
 
     var tokens = tokenize(preprocessedText: pre)

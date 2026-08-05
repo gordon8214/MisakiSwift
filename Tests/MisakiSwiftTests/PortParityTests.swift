@@ -102,8 +102,24 @@ import Testing
 
   #expect(!result.contains("\n"), "newline leaked into phonemes: \(result)")
   #expect(!result.contains("\r"), "carriage return leaked into phonemes: \(result)")
-  // The separator must survive as a space, not vanish.
   #expect(result.contains(" "), "word separator was lost: \(result)")
+}
+
+// The assertion that matters, and the one the weaker test above missed: a
+// newline must be INDISTINGUISHABLE from a space. NLTagger does not treat a
+// bare "\n" as a word boundary — it returned "alpha\nbeta" as one Noun token,
+// which phonemized as a single compound word AND shifted the stress, so
+// "Second" came out sˈikənd instead of sˈɛkənd. Upstream never hits this
+// because KPipeline splits on `\n+` before misaki ever runs.
+@Test func newlineIsIndistinguishableFromASpace() async throws {
+  let g2p = EnglishG2P(british: false)
+  for (newlined, spaced) in [("alpha\nbeta", "alpha beta"),
+                             ("First sentence.\nSecond sentence.", "First sentence. Second sentence."),
+                             ("Line one\nLine two", "Line one Line two")] {
+    let a = g2p.phonemize(text: newlined).0
+    let b = g2p.phonemize(text: spaced).0
+    #expect(a == b, "newline diverged from space:\n  \(newlined.debugDescription) -> \(a)\n  \(spaced.debugDescription) -> \(b)")
+  }
 }
 
 @Test func runsOfWhitespaceCollapseToOneSpace() async throws {
