@@ -35,7 +35,15 @@ final public class EnglishG2P {
       ")": ")"
   ]
   
-  static let nonQuotePunctuations: Set<Character> = Set(punctuactions.filter { !"\"\"\"".contains($0) })
+  // Upstream: `NON_QUOTE_PUNCTS = frozenset(p for p in PUNCTS if p not in '"“”')`
+  // (en.py:67). The filter literal here used to be `"\"\"\""` — three ASCII
+  // quotes, not the ASCII-plus-two-typographic set — so `“` and `”` stayed in,
+  // and they are what HTML and RSS actually contain. Both consumers
+  // (`tokenContext`, `resolveTokens`) then treated a curly quote as a phrase
+  // break where the server did not: `The “apple” tree grew.` came out "ðə"
+  // rather than "ði", and an article before an opening curly quote lost its
+  // following-word context entirely.
+  static let nonQuotePunctuations: Set<Character> = Set(punctuactions.filter { !"\"“”".contains($0) })
   static let vowels: Set<Character> = Set("AIOQWYaiuæɑɒɔəɛɜɪʊʌᵻ")
   static let consonants: Set<Character> = Set("bdfhjklmnpstvwzðŋɡɹɾʃʒʤʧθ")
   static let subTokenJunks: Set<Character> = Set("',-._''/")

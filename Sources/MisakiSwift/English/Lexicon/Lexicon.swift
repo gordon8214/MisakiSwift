@@ -223,26 +223,48 @@ final class Lexicon {
       // `.determiner`. On-device Kokoro voiced the article as "AY" throughout
       // an article while the server (same misaki, spaCy tags) did not.
       //
-      // Deliberate divergence from upstream: default to the article and require
-      // POSITIVE evidence for the letter name, rather than defaulting to the
-      // letter name and requiring positive evidence for the article. The
-      // evidence is `ctx.futureVowel == nil`, i.e. nothing but punctuation or
-      // end-of-input follows — an indefinite article is never phrase-final, a
-      // letter name routinely is ("Plan A.", "Exhibit A."). Restricted to the
-      // capitalized form so a lowercase "a" left phrase-final by a caller that
-      // chunks its input mid-clause still reads as the article.
+      // Deliberate divergence from upstream: invert which reading needs proof.
+      // Default to the article and require POSITIVE evidence for the letter
+      // name, instead of defaulting to the letter name and treating one tag
+      // value as the only escape. The evidence is a capitalized "A" carrying
+      // the LEXICAL tag `.noun`.
       //
-      // Note this is checked BEFORE any tag test, which is what makes it
-      // tagger-independent — and it is strictly better than the tag on its own:
-      // NLTagger labels the "A" in "The answer is A." `.determiner`, which
-      // upstream's rule would have voiced as the article.
+      // Two properties do the work, and both are about which way the tagger
+      // fails rather than about it being right:
       //
-      // Cost, accepted: a NON-final letter name loses the letter reading
-      // ("Section A of the report" → "uh"). Articles outnumber letter names in
-      // prose by orders of magnitude, and a caller can still force the letter
-      // with a `[A](/ˈA/)` override, which resolves at rating 5 and never
-      // reaches this lexicon at all.
-      if word == "A" && ctx.futureVowel == nil { return ("ˈA", 4) }
+      //   * `.noun` is a lexical class, so NLTagger only reports it when NER
+      //     did NOT claim the span. The name-type values — the ones that
+      //     shadow the lexical class — are therefore not evidence, which is
+      //     precisely the swallowed-article case above. Do NOT widen this to
+      //     `isProperNoun`.
+      //   * Every OTHER tag now reads as the article, where upstream read all
+      //     of them as the letter name. A lowercase "a" can never take the
+      //     letter reading at all. So a tagger that is merely *wrong* lands on
+      //     "ɐ", and only a tagger that is confidently, specifically nominal
+      //     lands on "ˈA".
+      //
+      // Measured over the corpus in DeterminerTagTests, this is never worse
+      // than upstream on any input and strictly better on several: it fixes
+      // every article followed by a mid-phrase mark, which an earlier attempt
+      // at this rule (evidence = `ctx.futureVowel == nil`) got wrong, because
+      // `tokenContext` clears futureVowel for ANY of `; : , . ! ? — …` and not
+      // just for a terminator — so `A “smart” speaker` and `A — rare —
+      // solution` were voiced with the emphatic article this branch exists to
+      // remove.
+      //
+      // Two costs, both shared with upstream rather than introduced here:
+      //
+      //   * A letter name NLTagger calls `.determiner` reads as the article
+      //     ("Vitamin A", "Section A", "Team A"). Pinned with withKnownIssue in
+      //     DeterminerTagTests, so it fires if a finer POS source ever lands —
+      //     the same wall as past-tense "read".
+      //   * A period with no following space fuses in NLTagger ("thing.A" comes
+      //     back as ONE `.noun` token) and `retokenize` copies that tag onto the
+      //     subtokens, so the "A" is read as the letter. Also pinned.
+      //
+      // Either way a caller can force the reading with a `[A](/ˈA/)` override,
+      // which resolves at rating 5 and never reaches this lexicon at all.
+      if word == "A" && tag == .noun { return ("ˈA", 4) }
       return ("ɐ", 4)
     } else if ["am", "Am", "AM"].contains(word) {
       if let t = tag, pennTag(for: t, token: word).hasPrefix("NN") {

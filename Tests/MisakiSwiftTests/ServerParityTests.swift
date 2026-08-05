@@ -18,8 +18,10 @@ import Testing
 // ever deliberate, mirror it on both sides AND pin it with a direct assertion —
 // parity alone cannot catch both sides moving together.
 //
-// FOUR FIXTURES ARE DELIBERATELY EXCLUDED, because /dev/phonemize is not a
-// valid oracle for them:
+// FIXTURES DELIBERATELY EXCLUDED — two reasons, kept apart because they mean
+// different things.
+//
+// (a) /dev/phonemize is not a valid oracle for the input:
 //
 //  1. "First sentence.\nSecond sentence." — the endpoint splits on newlines and
 //     returns only the first chunk, so it reports less than it synthesizes.
@@ -33,17 +35,19 @@ import Testing
 //     emit ˈ). Real, subtle, and worth its own investigation; not pinned here
 //     because the oracle is inconsistent for these shapes.
 //
-// "Yesterday I read the book." is excluded too — it is the known NLTagger POS
-// limitation, already pinned with withKnownIssue in PortParityTests.
+// (b) The oracle is valid and we knowingly differ, because NLTagger cannot
+//     supply the distinction spaCy does. Each is pinned with withKnownIssue at
+//     the named test, so it fires when a finer POS source lands:
 //
-// So are "Plan A worked." and "Section A of the report." (server: plˈæn ˈA
-// wˈɜɹkt. / sˈɛkʃən ˈA ʌv ðə ɹəpˈɔɹt.). Those are a DELIBERATE divergence, not a
-// gap: Lexicon.getSpecialCase now defaults a bare "a"/"A" to the article and
-// requires positive evidence for the letter name, because NLTagger is not
-// reliable enough to be the sole gate the way spaCy's DT is. A NON-final letter
-// name is what that costs, and it is pinned directly — per the rule above — by
-// nonFinalLetterNameIsADeliberateDivergence in DeterminerTagTests. Phrase-final
-// letter names ("Plan A.") still agree with the server.
+//  5. "Yesterday I read the book." — PortParityTests,
+//     pastTenseReadIsAKnownNLTaggerLimitation.
+//  6. "Plan A worked." and "Section A of the report." (server: plˈæn ˈA wˈɜɹkt.
+//     / sˈɛkʃən ˈA ʌv ðə ɹəpˈɔɹt.) — DeterminerTagTests,
+//     letterNamesTaggedDeterminerAreAKnownLimitation. NLTagger calls both of
+//     those "A" `.determiner`, which is also what upstream's `tag == 'DT'` gate
+//     keys on, so this is a shared limitation and not a cost of inverting the
+//     default in Lexicon.getSpecialCase. Letter names the tagger calls `.noun`
+//     ("Plan A.", "point A to point B") do agree with the server.
 
 struct ServerParityTests {
 
@@ -76,6 +80,15 @@ struct ServerParityTests {
      "hˌi bˈɔt ɐ kˈɑɹ. ɐ tɹˈʌk fˈɑlOd."),
     ("Apple hired a new engineer in Cupertino.",
      "ˈæpᵊl hˈIəɹd ɐ nˈu ˌɛnʤənˈɪɹ ɪn kˌupəɹtˈinO."),
+    // A typographic quote must not read as a phrase break. All three of these
+    // turn on `nonQuotePunctuations` excluding “ ” as upstream does: the first
+    // two on the following-vowel forms of "the"/"to", the third on the article.
+    ("The \u{201C}apple\u{201D} tree grew.",
+     "ði \u{201C}ˈæpᵊl\u{201D} tɹˈi ɡɹˈu."),
+    ("They want to \u{201C}open\u{201D} it.",
+     "ðˌA wˈɑnt tʊ \u{201C}ˈOpᵊn\u{201D} ɪt."),
+    ("A \u{201C}smart\u{201D} speaker arrived.",
+     "ɐ \u{201C}smˈɑɹt\u{201D} spˈikəɹ əɹˈIvd."),
     ("Up 50% today.",
      "ˌʌp fˈɪfti pəɹsˈɛnt tədˈA."),
     ("Fish & chips.",
