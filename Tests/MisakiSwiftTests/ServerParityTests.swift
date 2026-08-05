@@ -35,6 +35,15 @@ import Testing
 //
 // "Yesterday I read the book." is excluded too — it is the known NLTagger POS
 // limitation, already pinned with withKnownIssue in PortParityTests.
+//
+// So are "Plan A worked." and "Section A of the report." (server: plˈæn ˈA
+// wˈɜɹkt. / sˈɛkʃən ˈA ʌv ðə ɹəpˈɔɹt.). Those are a DELIBERATE divergence, not a
+// gap: Lexicon.getSpecialCase now defaults a bare "a"/"A" to the article and
+// requires positive evidence for the letter name, because NLTagger is not
+// reliable enough to be the sole gate the way spaCy's DT is. A NON-final letter
+// name is what that costs, and it is pinned directly — per the rule above — by
+// nonFinalLetterNameIsADeliberateDivergence in DeterminerTagTests. Phrase-final
+// letter names ("Plan A.") still agree with the server.
 
 struct ServerParityTests {
 
@@ -61,6 +70,12 @@ struct ServerParityTests {
      "ˈælfə bˈATə."),
     ("The result (a good one) arrived.",
      "ðə ɹəzˈʌlt (ɐ ɡˈʊd wˈʌn) əɹˈIvd."),
+    ("A new study describes a mechanism.",
+     "ɐ nˈu stˈʌdi dəskɹˈIbz ɐ mˈɛkənˌɪzəm."),
+    ("He bought a car. A truck followed.",
+     "hˌi bˈɔt ɐ kˈɑɹ. ɐ tɹˈʌk fˈɑlOd."),
+    ("Apple hired a new engineer in Cupertino.",
+     "ˈæpᵊl hˈIəɹd ɐ nˈu ˌɛnʤənˈɪɹ ɪn kˌupəɹtˈinO."),
     ("Up 50% today.",
      "ˌʌp fˈɪfti pəɹsˈɛnt tədˈA."),
     ("Fish & chips.",

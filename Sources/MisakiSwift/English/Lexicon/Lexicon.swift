@@ -209,8 +209,41 @@ final class Lexicon {
         return getNNP(word)
       }
     } else if word == "a" || word == "A" {
-      if tag == .determiner { return ("ɐ", 4) }
-      return ("ˈA", 4)
+      // Upstream misaki reads a bare "a"/"A" as the LETTER NAME unless spaCy
+      // tagged it DT (en.py:174-175, `return 'ɐ' if tag == 'DT' else 'ˈA', 4`).
+      // "A" is /eɪ/ in this alphabet, so that else branch is a primary-stressed
+      // "AY" — which is exactly how English marks an *emphatic* article, and so
+      // reads to a listener as misplaced emphasis rather than as a wrong vowel.
+      //
+      // spaCy earns that strict test. NLTagger does not: it is coarse enough
+      // that this port already pins one such miss with withKnownIssue
+      // (past-tense "read"), and `.nameTypeOrLexicalClass` is a HYBRID scheme —
+      // whenever Apple's NER claims a span it returns a name-type tag INSTEAD
+      // of the lexical class, so an article swallowed by an entity can never be
+      // `.determiner`. On-device Kokoro voiced the article as "AY" throughout
+      // an article while the server (same misaki, spaCy tags) did not.
+      //
+      // Deliberate divergence from upstream: default to the article and require
+      // POSITIVE evidence for the letter name, rather than defaulting to the
+      // letter name and requiring positive evidence for the article. The
+      // evidence is `ctx.futureVowel == nil`, i.e. nothing but punctuation or
+      // end-of-input follows — an indefinite article is never phrase-final, a
+      // letter name routinely is ("Plan A.", "Exhibit A."). Restricted to the
+      // capitalized form so a lowercase "a" left phrase-final by a caller that
+      // chunks its input mid-clause still reads as the article.
+      //
+      // Note this is checked BEFORE any tag test, which is what makes it
+      // tagger-independent — and it is strictly better than the tag on its own:
+      // NLTagger labels the "A" in "The answer is A." `.determiner`, which
+      // upstream's rule would have voiced as the article.
+      //
+      // Cost, accepted: a NON-final letter name loses the letter reading
+      // ("Section A of the report" → "uh"). Articles outnumber letter names in
+      // prose by orders of magnitude, and a caller can still force the letter
+      // with a `[A](/ˈA/)` override, which resolves at rating 5 and never
+      // reaches this lexicon at all.
+      if word == "A" && ctx.futureVowel == nil { return ("ˈA", 4) }
+      return ("ɐ", 4)
     } else if ["am", "Am", "AM"].contains(word) {
       if let t = tag, pennTag(for: t, token: word).hasPrefix("NN") {
         return getNNP(word)
