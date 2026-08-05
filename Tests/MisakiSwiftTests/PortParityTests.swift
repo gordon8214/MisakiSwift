@@ -115,7 +115,13 @@ import Testing
   let g2p = EnglishG2P(british: false)
   for (newlined, spaced) in [("alpha\nbeta", "alpha beta"),
                              ("First sentence.\nSecond sentence.", "First sentence. Second sentence."),
-                             ("Line one\nLine two", "Line one Line two")] {
+                             ("Line one\nLine two", "Line one Line two"),
+                             // CRLF is a SINGLE Character in Swift, equal to neither
+                             // "\n" nor "\r", so a Character-level fold skipped it
+                             // entirely — and CRLF is the common case in HTML/RSS.
+                             ("alpha\r\nbeta", "alpha beta"),
+                             ("First sentence.\r\nSecond sentence.", "First sentence. Second sentence."),
+                             ("Line one\rLine two", "Line one Line two")] {
     let a = g2p.phonemize(text: newlined).0
     let b = g2p.phonemize(text: spaced).0
     #expect(a == b, "newline diverged from space:\n  \(newlined.debugDescription) -> \(a)\n  \(spaced.debugDescription) -> \(b)")

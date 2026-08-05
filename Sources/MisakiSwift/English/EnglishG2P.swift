@@ -179,9 +179,17 @@ final public class EnglishG2P {
     linkRegex.enumerateMatches(in: input, options: [], range: fullRange) { match, _, _ in
       guard let m = match else { return }
 
-      let range = m.range
-      let start = input.index(input.startIndex, offsetBy: range.location)
-      let end = input.index(start, offsetBy: range.length)
+      // `Range(_:in:)` converts UTF-16 offsets to String.Index correctly.
+      // Counting Characters with `offsetBy:` mixed two coordinate systems:
+      // NSRegularExpression reports UTF-16 offsets, but `index(_:offsetBy:)`
+      // counts grapheme clusters. Any cluster wider than one UTF-16 unit —
+      // CRLF (1 Character, 2 units) or any emoji — desynchronized them, which
+      // silently dropped trailing words ("hi 😀 [Misaki](/misˈɑki/) now" lost
+      // "now") and could walk past the end and trap outright
+      // ("😀😀😀😀😀[a](/b/)" → "String index is out of bounds").
+      guard let converted = Range(m.range, in: input) else { return }
+      let start = converted.lowerBound
+      let end = converted.upperBound
 
       result += String(input[lastEnd..<start])
       tokens.append(contentsOf: String(input[lastEnd..<start]).split(separator: " ").map(String.init))
@@ -513,11 +521,21 @@ final public class EnglishG2P {
     // (ˌælfəbˈɛTə) rather than two (ˈælfə bˈATə), shifting their stress too.
     // Article text is mostly line breaks, so this fused words constantly.
     //
-    // Length-preserving on purpose: substituting one character for one
-    // character keeps every String.Index in the preprocess feature ranges
-    // valid. Runs of newlines become runs of spaces, which the join at the end
-    // of this method collapses to a single separator.
-    let folded = String(text.map { $0 == "\n" || $0 == "\r" ? " " : $0 })
+    // Folded at the UNICODE SCALAR level, not the Character level.
+    //
+    // Swift treats CRLF as a single grapheme cluster (UAX #29), so
+    // `Character("\r\n")` equals neither "\n" nor "\r" — a Character-level map
+    // was a complete no-op for the most common line ending in HTML and RSS.
+    // Verified: "a\r\nb".count == 3, and the folded result came back unchanged,
+    // reproducing the exact fusion this is meant to prevent
+    // ("First sentence.\r\nSecond sentence." → "…sˈɛntᵊns.sˈikənd…").
+    //
+    // Scalar-level folding is also what makes the length claim true where it
+    // matters: "a\r\nb" is 4 UTF-16 units before and after, so the NSRange
+    // offsets `preprocess` works in are preserved exactly.
+    let folded = String(String.UnicodeScalarView(
+      text.unicodeScalars.map { $0 == "\n" || $0 == "\r" ? " " : $0 }
+    ))
 
     let pre: PreprocessTuple
     if performPreprocess {
