@@ -144,3 +144,38 @@ import Testing
   let (result, _) = g2p.phonemize(text: "Hello there.")
   #expect(!result.contains("❓"), "unresolvable-token sentinel leaked: \(result)")
 }
+
+// MARK: - Symbols with a spoken word form
+
+// NLTagger tags % & + @ as punctuation. Neither `punctuationTagPhonemes` nor
+// the `punctuactions` filter set contains them, so the punctuation branch in
+// `phonemize` mapped each to "" and dropped it: "50%" was voiced "fifty", with
+// "percent" silently gone. Symbols carrying a `Lexicon.symbolSet` entry now
+// bypass that branch and resolve through the lexicon, as upstream misaki does.
+@Test func percentIsVoicedNotDropped() async throws {
+  let g2p = EnglishG2P(british: false)
+  let (result, _) = g2p.phonemize(text: "Up 50% today.")
+  #expect(result.contains("pəɹsˈɛnt"), "'percent' was dropped: \(result)")
+}
+
+@Test func ampersandBecomesAnd() async throws {
+  let g2p = EnglishG2P(british: false)
+  let (result, _) = g2p.phonemize(text: "Fish & chips.")
+  #expect(result.contains("ænd"), "'&' was dropped: \(result)")
+}
+
+@Test func plusIsVoiced() async throws {
+  let g2p = EnglishG2P(british: false)
+  let (result, _) = g2p.phonemize(text: "C++ code.")
+  #expect(result.contains("plˈʌs"), "'+' was dropped: \(result)")
+}
+
+// The guard must not disturb ordinary punctuation, which still has to reach
+// Kokoro's vocab to drive prosody.
+@Test func ordinaryPunctuationStillReachesThePhonemes() async throws {
+  let g2p = EnglishG2P(british: false)
+  let (result, _) = g2p.phonemize(text: "Wait, really? Yes!")
+  #expect(result.contains(","))
+  #expect(result.contains("?"))
+  #expect(result.contains("!"))
+}

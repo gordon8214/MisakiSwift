@@ -450,7 +450,16 @@ final public class EnglishG2P {
             token.phonemes = "—"
           }
           token.`_`.rating = 3
-        } else if let tag = token.tag, EnglishG2P.punctuationTags.contains(tag), !token.text.lowercased().unicodeScalars.allSatisfy({ (97...122).contains(Int($0.value)) }) {
+        // `Lexicon.symbolSet[token.text] == nil` keeps symbols that have a
+        // spoken word form — % & + @ — out of this branch. NLTagger tags them
+        // as punctuation, and neither `punctuationTagPhonemes` nor
+        // `punctuactions` contains them, so they were filtered to "" and
+        // silently dropped: "50%" was voiced "fifty", losing "percent"
+        // entirely. Falling through instead lets `Lexicon.getSpecialCase`
+        // resolve them through `symbolSet` as upstream misaki does.
+        } else if let tag = token.tag, EnglishG2P.punctuationTags.contains(tag),
+                  Lexicon.symbolSet[token.text] == nil,
+                  !token.text.lowercased().unicodeScalars.allSatisfy({ (97...122).contains(Int($0.value)) }) {
           if let val = EnglishG2P.punctuationTagPhonemes[token.text] {
             token.phonemes = val
           } else {
