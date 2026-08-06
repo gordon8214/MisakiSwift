@@ -16,6 +16,22 @@ enum EnglishHeteronymResolver {
     "radio", "show", "stream", "television", "tv", "video"
   ]
 
+  // Apple's lexical tagger is inconsistent for both senses of "content": on
+  // macOS it tags the predicate in "feel content" as a noun, while the iOS
+  // runtime has tagged the noun adjunct in "content scraping" as an adjective.
+  // These two unambiguous local contexts let us choose the heteronym without
+  // trusting either platform's tag. Keep the noun rule deliberately narrow so
+  // a genuinely adjectival phrase such as "a content child" stays untouched.
+  private static let contentAdjectiveLeftContexts: Set<String> = [
+    "am", "are", "be", "became", "become", "been", "being", "feel", "feeling",
+    "feels", "felt", "is", "remain", "remained", "remaining", "remains", "seem",
+    "seemed", "seeming", "seems", "was", "were"
+  ]
+
+  private static let contentNounRightContexts: Set<String> = [
+    "scraper", "scrapers", "scraping"
+  ]
+
   static func resolve(tokens: [MToken]) {
     for (index, token) in tokens.enumerated() where token.phonemes == nil {
       let previousWord = tokens[..<index].reversed().compactMap(normalizedWord).first
@@ -35,18 +51,29 @@ enum EnglishHeteronymResolver {
     previousWord: String?,
     nextWord: String?
   ) -> NLTag? {
-    guard word.lowercased() == "live",
-          currentTag == nil || currentTag == .otherWord else {
+    switch word.lowercased() {
+    case "content":
+      if let nextWord, contentNounRightContexts.contains(nextWord) {
+        return .noun
+      }
+      if let previousWord, contentAdjectiveLeftContexts.contains(previousWord) {
+        return .adjective
+      }
+      return currentTag
+    case "live":
+      guard currentTag == nil || currentTag == .otherWord else {
+        return currentTag
+      }
+      if let nextWord, liveMediaRightContexts.contains(nextWord) {
+        return currentTag
+      }
+      if let previousWord, liveVerbLeftContexts.contains(previousWord) {
+        return .verb
+      }
+      return currentTag
+    default:
       return currentTag
     }
-
-    if let nextWord, liveMediaRightContexts.contains(nextWord) {
-      return currentTag
-    }
-    if let previousWord, liveVerbLeftContexts.contains(previousWord) {
-      return .verb
-    }
-    return currentTag
   }
 
   private static func normalizedWord(_ token: MToken) -> String? {

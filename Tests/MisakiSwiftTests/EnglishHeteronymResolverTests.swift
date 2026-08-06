@@ -3,6 +3,37 @@ import Testing
 @testable import MisakiSwift
 
 struct EnglishHeteronymResolverTests {
+  @Test func contentUsesTheNounReadingBeforeScraping() {
+    let sourceTags: [NLTag?] = [nil, .otherWord, .adjective, .noun]
+
+    for sourceTag in sourceTags {
+      #expect(EnglishHeteronymResolver.resolvedTag(
+        for: "content",
+        currentTag: sourceTag,
+        previousWord: "unwarranted",
+        nextWord: "scraping"
+      ) == .noun)
+    }
+  }
+
+  @Test func contentUsesTheAdjectiveReadingAfterALinkingVerb() {
+    #expect(EnglishHeteronymResolver.resolvedTag(
+      for: "content",
+      currentTag: .noun,
+      previousWord: "feel",
+      nextWord: nil
+    ) == .adjective)
+  }
+
+  @Test func contentFallbackLeavesOtherContextsUntouched() {
+    #expect(EnglishHeteronymResolver.resolvedTag(
+      for: "content",
+      currentTag: .adjective,
+      previousWord: "a",
+      nextWord: "child"
+    ) == .adjective)
+  }
+
   @Test func liveUsesTheVerbReadingWhenPOSTaggingIsUnavailable() {
     let contexts: [(previous: String, next: String)] = [
       ("you", "in"),
