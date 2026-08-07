@@ -182,38 +182,22 @@ private func expectArticlesAreSchwa(_ probe: Probe, file: String = #file) {
   }
 }
 
-// MARK: - Known limitations, in the style of pastTenseReadIsAKnownNLTaggerLimitation
-
-// NLTagger calls these "A" `.determiner`, so they read as the article. NOT a
-// regression from the inversion — upstream's `tag == 'DT'` gate produces exactly
-// the same output on exactly these inputs, because the tag it keys on is the
-// thing that is wrong. Closing them needs a finer POS source, the same wall as
-// past-tense "read".
-//
-// withKnownIssue means this FAILS if the behaviour is ever fixed, which is the
-// signal to promote these into the test above and capture them as server
-// parity fixtures.
-@Test func letterNamesTaggedDeterminerAreAKnownLimitation() async throws {
+// The parity frontend resolves the former NLTagger limitation. The small
+// positive-evidence correction for "Hepatitis A" is covered here alongside the
+// contexts en_core_web_sm already tags nominally.
+@Test func letterNamesUseTheLetterReadingAcrossLabelContexts() async throws {
   let g2p = EnglishG2P(british: false)
-  withKnownIssue("NLTagger reports .determiner for these letter names; needs spaCy-grade POS") {
-    for text in ["Vitamin A helps.", "Section A of the report.", "Team A won.",
-                 "Grade A beef.", "Plan A worked.", "The answer is A."] {
-      let tokens = g2p.phonemize(text: text).1
-      #expect(tokens.first { $0.text == "A" }?.phonemes == "ˈA", "\(text.debugDescription)")
-    }
+  for text in ["Vitamin A helps.", "Section A of the report.", "Team A won.",
+               "Grade A beef.", "Plan A worked.", "The answer is A."] {
+    let tokens = g2p.phonemize(text: text).1
+    #expect(tokens.first { $0.text == "A" }?.phonemes == "ˈA", "\(text.debugDescription)")
   }
 }
 
-// A period with no following space is a single token to NLTagger — "thing.A"
-// comes back as one `.noun` — and `EnglishG2P.retokenize` builds subtokens with
-// `MToken(copying:)`, which copies the parent's tag. The "A" subtoken therefore
-// inherits `.noun` and takes the letter reading. Upstream has the same defect
-// for the same reason, so this is a shared limitation rather than a cost of the
-// inversion; it is pinned because extracted article text produces the shape.
-@Test func articleFusedToAPrecedingPeriodIsAKnownLimitation() async throws {
+// spaCy separates the period and correctly tags the following sentence's
+// article, even when publishers omit the usual space.
+@Test func articleFollowingAnUnspacedPeriodUsesTheArticleReading() async throws {
   let g2p = EnglishG2P(british: false)
-  withKnownIssue("NLTagger fuses 'thing.A' into one .noun token; the subtokens inherit that tag") {
-    let (phonemes, _) = g2p.phonemize(text: "It was a thing.A new thing began.")
-    #expect(!phonemes.contains("ˌA") && !phonemes.contains("ˈA"), "\(phonemes)")
-  }
+  let (phonemes, _) = g2p.phonemize(text: "It was a thing.A new thing began.")
+  #expect(!phonemes.contains("ˌA") && !phonemes.contains("ˈA"), "\(phonemes)")
 }

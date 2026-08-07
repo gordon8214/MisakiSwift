@@ -42,16 +42,48 @@ enum EnglishHeteronymResolver {
     "to", "can", "could", "may", "might", "must", "shall", "should", "will", "would"
   ]
 
-  static func resolve(tokens: [MToken]) {
+  // en_core_web_sm still labels an uppercase letter as DT in a few compact
+  // noun labels (notably "Hepatitis A vaccine"). These heads are positive
+  // evidence for a letter name; ordinary sentence-initial and mid-sentence
+  // articles remain untouched.
+  private static let letterNameLeftContexts: Set<String> = [
+    "answer", "appendix", "choice", "class", "exhibit", "grade", "group",
+    "hepatitis", "option", "plan", "section", "team", "type", "vitamin"
+  ]
+
+  static func resolve(tokens: [MToken], pennTags: inout PennTagMap) {
     for (index, token) in tokens.enumerated() where token.phonemes == nil {
       let previousWord = tokens[..<index].reversed().compactMap(normalizedWord).first
       let nextWord = tokens.dropFirst(index + 1).compactMap(normalizedWord).first
-      token.tag = resolvedTag(
+      if token.text == "A",
+         pennTags[ObjectIdentifier(token)] == "DT",
+         let previousWord,
+         letterNameLeftContexts.contains(previousWord) {
+        token.tag = .noun
+        pennTags[ObjectIdentifier(token)] = "NN"
+        continue
+      }
+      let originalTag = token.tag
+      let tag = resolvedTag(
         for: token.text,
-        currentTag: token.tag,
+        currentTag: originalTag,
         previousWord: previousWord,
         nextWord: nextWord
       )
+      token.tag = tag
+      guard tag != originalTag else {
+        continue
+      }
+      switch tag {
+      case .verb:
+        pennTags[ObjectIdentifier(token)] = "VB"
+      case .adjective:
+        pennTags[ObjectIdentifier(token)] = "JJ"
+      case .noun:
+        pennTags[ObjectIdentifier(token)] = "NN"
+      default:
+        break
+      }
     }
   }
 

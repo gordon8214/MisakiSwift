@@ -7,6 +7,7 @@ final public class EnglishG2P {
   private let british: Bool
   private let nameTypeTagger: NLTagger
   private let lexicalClassTagger: NLTagger
+  private let spacyTagger: SpacyEnglishTagger?
   private let lexicon: Lexicon
   private let fallback: EnglishFallbackNetwork
   private let unk: String
@@ -78,13 +79,47 @@ final public class EnglishG2P {
   ///   one inside KokoroSwift for synthesis — and both rely on this default.
   ///   Changing only one would silently desynchronize their token counts, which
   ///   is what selects the style vector.
-  public init(british: Bool = false, unk: String = "") {
+  private init(british: Bool, unk: String, spacyTagger: SpacyEnglishTagger?) {
     self.british = british
     self.nameTypeTagger = NLTagger(tagSchemes: [.nameTypeOrLexicalClass])
     self.lexicalClassTagger = NLTagger(tagSchemes: [.lexicalClass])
+    self.spacyTagger = spacyTagger
     self.lexicon = Lexicon(british: british)
     self.fallback = EnglishFallbackNetwork(british: british)
     self.unk = unk
+  }
+
+  public convenience init(british: Bool = false, unk: String = "") {
+    self.init(british: british, unk: unk, spacyTagger: try? SpacyEnglishTagger())
+  }
+
+  /// Builds an English frontend that must use the same tokenizer and Penn
+  /// tagger as the deployed Kokoro runtime. BetterTTS uses this initializer so
+  /// a damaged or missing parity resource is reported instead of silently
+  /// returning to Apple's coarse lexical tags.
+  public convenience init(
+    british: Bool = false,
+    unk: String = "",
+    requireRemoteFrontendParity: Bool
+  ) throws {
+    let tagger: SpacyEnglishTagger?
+    if requireRemoteFrontendParity {
+      tagger = try SpacyEnglishTagger()
+    } else {
+      tagger = try? SpacyEnglishTagger()
+    }
+    self.init(british: british, unk: unk, spacyTagger: tagger)
+  }
+
+  public var usesRemoteFrontendParity: Bool {
+    spacyTagger != nil
+  }
+
+  public func frontendTokens(text: String) throws -> [EnglishFrontendToken] {
+    guard let spacyTagger else {
+      throw SpacyParityError.missingResource("spaCy English frontend")
+    }
+    return spacyTagger.frontendTokens(for: text)
   }
 
   private func tokenContext(_ ctx: TokenContext, ps: String?, token: MToken) -> TokenContext {
@@ -235,44 +270,60 @@ final public class EnglishG2P {
     return (text: result, tokens: tokens, features: features)
   }
     
-  private func tokenize(preprocessedText: PreprocessTuple) -> [MToken] {
+  private func tokenize(preprocessedText: PreprocessTuple) -> (tokens: [MToken], pennTags: PennTagMap) {
     var mutableTokens: [MToken] = []
-    
-    // Tokenize and perform part-of-speech tagging
-    let textRange = preprocessedText.text.startIndex..<preprocessedText.text.endIndex
-    nameTypeTagger.string = preprocessedText.text
-    nameTypeTagger.setLanguage(.english, range: textRange)
-    lexicalClassTagger.string = preprocessedText.text
-    lexicalClassTagger.setLanguage(.english, range: textRange)
-    let options: NLTagger.Options = []
-    var lexicalTags: [Range<String.Index>: NLTag] = [:]
-    lexicalClassTagger.enumerateTags(
-      in: textRange,
-      unit: .word,
-      scheme: .lexicalClass,
-      options: options) { tag, tokenRange in
-      lexicalTags[tokenRange] = tag
-      return true
-    }
+    var pennTags: PennTagMap = [:]
 
-    nameTypeTagger.enumerateTags(
-      in: textRange,
-      unit: .word,
-      scheme: .nameTypeOrLexicalClass,
-      options: options) { tag, tokenRange in
-      if let tag = EnglishTagResolver.resolve(
-        nameTypeOrLexicalClass: tag,
-        lexicalClass: lexicalTags[tokenRange]
-      ) {
-        let word = String(preprocessedText.text[tokenRange])
-        if tag == .whitespace, let lastToken = mutableTokens.last {
-          lastToken.whitespace = word
-        } else {
-          mutableTokens.append(MToken(text: word, tokenRange: tokenRange, tag: tag, whitespace: ""))
-        }
+    if let spacyTagger {
+      let trace = spacyTagger.trace(preprocessedText.text)
+      for (word, pennTag) in zip(trace.tokens, trace.pennTags) {
+        let token = MToken(
+          text: word.text,
+          tokenRange: word.range,
+          tag: SpacyEnglishTagger.lexicalClass(for: pennTag),
+          whitespace: word.whitespace
+        )
+        mutableTokens.append(token)
+        pennTags[ObjectIdentifier(token)] = pennTag
       }
-        
-      return true
+    } else {
+      // Compatibility fallback for clients that do not require remote parity.
+      let textRange = preprocessedText.text.startIndex..<preprocessedText.text.endIndex
+      nameTypeTagger.string = preprocessedText.text
+      nameTypeTagger.setLanguage(.english, range: textRange)
+      lexicalClassTagger.string = preprocessedText.text
+      lexicalClassTagger.setLanguage(.english, range: textRange)
+      let options: NLTagger.Options = []
+      var lexicalTags: [Range<String.Index>: NLTag] = [:]
+      lexicalClassTagger.enumerateTags(
+        in: textRange,
+        unit: .word,
+        scheme: .lexicalClass,
+        options: options
+      ) { tag, tokenRange in
+        lexicalTags[tokenRange] = tag
+        return true
+      }
+
+      nameTypeTagger.enumerateTags(
+        in: textRange,
+        unit: .word,
+        scheme: .nameTypeOrLexicalClass,
+        options: options
+      ) { tag, tokenRange in
+        if let tag = EnglishTagResolver.resolve(
+          nameTypeOrLexicalClass: tag,
+          lexicalClass: lexicalTags[tokenRange]
+        ) {
+          let word = String(preprocessedText.text[tokenRange])
+          if tag == .whitespace, let lastToken = mutableTokens.last {
+            lastToken.whitespace = word
+          } else {
+            mutableTokens.append(MToken(text: word, tokenRange: tokenRange, tag: tag, whitespace: ""))
+          }
+        }
+        return true
+      }
     }
 
     // Align features to tokens. NLTagger's `.word` unit splits hyphenated or
@@ -312,12 +363,16 @@ final public class EnglishG2P {
       }
     }
 
-    EnglishHeteronymResolver.resolve(tokens: mutableTokens)
+    EnglishHeteronymResolver.resolve(tokens: mutableTokens, pennTags: &pennTags)
 
-    return mutableTokens
+    return (mutableTokens, pennTags)
   }
   
-  func mergeTokens(_ tokens: [MToken], unk: String? = nil) -> MToken {
+  func mergeTokens(
+    _ tokens: [MToken],
+    unk: String? = nil,
+    pennTags: inout PennTagMap
+  ) -> MToken {
     let stressSet = Set(tokens.compactMap { $0._.stress })
     let currencySet = Set(tokens.compactMap { $0._.currency })
     let ratings: Set<Int?> = Set(tokens.map { $0._.rating })
@@ -329,6 +384,7 @@ final public class EnglishG2P {
         if token._.prespace,
            !phonemeBuilder.isEmpty,
            !(phonemeBuilder.last?.isWhitespace ?? false),
+           !(token.phonemes?.first?.isWhitespace ?? false),
            token.phonemes != nil {
           phonemeBuilder += " "
         }
@@ -350,7 +406,7 @@ final public class EnglishG2P {
     let tokenRangeEnd = tokens.last!.tokenRange.upperBound
     let flagChars = Set(tokens.flatMap { Array($0._.num_flags) })
     
-    return MToken(
+    let merged = MToken(
       text: mergedText,
       tokenRange: Range<String.Index>(uncheckedBounds: (lower: tokenRangeStart, upper: tokenRangeEnd)),
       tag: tagSource?.tag,
@@ -368,14 +424,18 @@ final public class EnglishG2P {
         rating: ratings.contains(where: { $0 == nil }) ? nil : ratings.compactMap { $0 }.min()
       )
     )
+    if let tagSource, let pennTag = pennTags[ObjectIdentifier(tagSource)] {
+      pennTags[ObjectIdentifier(merged)] = pennTag
+    }
+    return merged
   }
     
-  func foldLeft(_ tokens: [MToken]) -> [MToken] {
+  func foldLeft(_ tokens: [MToken], pennTags: inout PennTagMap) -> [MToken] {
     var result: [MToken] = []
     for token in tokens {
       if let last = result.last, !token.`_`.is_head {
         _ = result.popLast()
-        let merged = mergeTokens([last, token], unk: unk)
+        let merged = mergeTokens([last, token], unk: unk, pennTags: &pennTags)
         result.append(merged)
       } else {
         result.append(token)
@@ -391,6 +451,32 @@ final public class EnglishG2P {
 
     return matches.map { match in
       nsString.substring(with: match.range)
+    }
+  }
+
+  private func refinedPennTag(for subtoken: String, inherited pennTag: String?) -> String? {
+    switch subtoken {
+    case "(": return "-LRB-"
+    case ")": return "-RRB-"
+    case "[", "{": return "-LRB-"
+    case "]", "}": return "-RRB-"
+    case ",": return ","
+    case ".", "!", "?": return "."
+    case ":", ";", "–", "—": return ":"
+    case "-": return pennTag ?? ":"
+    case "\"", "“": return "``"
+    case "”": return "''"
+    default:
+      if subtoken.allSatisfy(\.isWhitespace) {
+        return "_SP"
+      }
+      if !subtoken.isEmpty, subtoken.allSatisfy(\.isNumber) {
+        return "CD"
+      }
+      if pennTag == "CD", ["am", "pm", "AM", "PM"].contains(subtoken) {
+        return "NNP"
+      }
+      return pennTag
     }
   }
 
@@ -436,21 +522,38 @@ final public class EnglishG2P {
     return true
   }
   
-  func retokenize(_ tokens: [MToken]) -> [Any] {
+  func retokenize(_ tokens: [MToken], pennTags: inout PennTagMap) -> [Any] {
     var words: [Any] = []
     var currency: String? = nil
     
     for (i, token) in tokens.enumerated() {
-      let needsSplit = (token.`_`.alias == nil && token.phonemes == nil)
+      let dottedParts = token.text.split(separator: ".")
+      let isDottedAcronym = token.text.contains(where: \.isLetter)
+        && token.text.trimmingCharacters(in: CharacterSet(charactersIn: ".")).contains(".")
+        && (dottedParts.map(\.count).max() ?? 0) < 3
+      let needsSplit = token.`_`.alias == nil && token.phonemes == nil && !isDottedAcronym
       var subtokens: [MToken] = []
       if needsSplit {
         let parts = subtokenize(word: token.text)
         subtokens = parts.map { part in
           let t = MToken(copying: token)
+          let inherited = pennTags[ObjectIdentifier(token)]
+          if let refined = refinedPennTag(for: part, inherited: inherited) {
+            pennTags[ObjectIdentifier(t)] = refined
+            t.tag = SpacyEnglishTagger.lexicalClass(for: refined)
+          }
           t.text = part
           t.whitespace = ""
           t.`_`.is_head = true
           t.`_`.prespace = false
+          if part == ".", token.text.contains("@") {
+            // Kokoro's remote eSpeak fallback treats dots inside an email
+            // address as word separators, not spoken punctuation. Preserve
+            // that behavior explicitly; the surrounding grouped token will
+            // add the separating spaces during `resolveTokens`.
+            t.phonemes = " "
+            t.`_`.rating = 4
+          }
           return t
         }
       } else {
@@ -463,6 +566,9 @@ final public class EnglishG2P {
       
         if token.`_`.alias != nil || token.phonemes != nil {
           // Do nothing at his point
+        } else if token.tag == .whitespace {
+          token.phonemes = ""
+          token.`_`.rating = 4
         } else if token.tag == .otherWord, Lexicon.currencies[token.text] != nil {
           currency = token.text
           token.phonemes = ""
@@ -572,16 +678,22 @@ final public class EnglishG2P {
         pre = (text: folded, tokens: [], features: [])
     }
 
-    var tokens = tokenize(preprocessedText: pre)
-    tokens = foldLeft(tokens)
+    let tokenization = tokenize(preprocessedText: pre)
+    var tokens = tokenization.tokens
+    var pennTags = tokenization.pennTags
+    tokens = foldLeft(tokens, pennTags: &pennTags)
     
-    let words = retokenize(tokens)
+    let words = retokenize(tokens, pennTags: &pennTags)
     
     var ctx = TokenContext()
     for i in stride(from: words.count - 1, through: 0, by: -1) {
       if let w = words[i] as? MToken {
         if w.phonemes == nil {
-          let out = lexicon.transcribe(w, ctx: ctx)
+          let out = lexicon.transcribe(
+            w,
+            pennTag: pennTags[ObjectIdentifier(w)],
+            ctx: ctx
+          )
           w.phonemes = out.0
           w.`_`.rating = out.1
         }
@@ -599,8 +711,18 @@ final public class EnglishG2P {
         var shouldFallback = false
         while left < right {
           let hasFixed = arr[left..<right].contains { $0.`_`.alias != nil || $0.phonemes != nil }
-          let token: MToken? = hasFixed ? nil : mergeTokens(Array(arr[left..<right]))
-          let res: (String?, Int?) = (token == nil) ? (nil, nil) : lexicon.transcribe(token!, ctx: ctx)
+          let token: MToken? = hasFixed
+            ? nil
+            : mergeTokens(Array(arr[left..<right]), pennTags: &pennTags)
+          let res: (String?, Int?) = if let token {
+            lexicon.transcribe(
+              token,
+              pennTag: pennTags[ObjectIdentifier(token)],
+              ctx: ctx
+            )
+          } else {
+            (nil, nil)
+          }
           
           if let phonemes = res.0 {
             arr[left].phonemes = phonemes
@@ -632,7 +754,7 @@ final public class EnglishG2P {
         }
         
         if shouldFallback {
-          let token = mergeTokens(arr)
+          let token = mergeTokens(arr, pennTags: &pennTags)
           let first = arr[0]
           let out = fallback(token)
           first.phonemes = out.0
@@ -651,7 +773,9 @@ final public class EnglishG2P {
     }
     
     let finalTokens: [MToken] = words.map { item in
-      if let arr = item as? [MToken] { return mergeTokens(arr, unk: self.unk) }
+      if let arr = item as? [MToken] {
+        return mergeTokens(arr, unk: self.unk, pennTags: &pennTags)
+      }
       return item as! MToken
     }
         

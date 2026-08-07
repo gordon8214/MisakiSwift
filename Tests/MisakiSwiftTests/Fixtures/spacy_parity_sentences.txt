@@ -1,0 +1,40 @@
+Yesterday I read the book.
+I read every day.
+They wound the clock carefully.
+The wound healed quickly.
+Please close the door.
+We stayed close to home.
+I feel content with the result.
+The content scraper copied the article.
+We need to coordinate donations.
+The GPS coordinate was wrong.
+A smart speaker read an article aloud.
+Vitamin A is important.
+The “apple” tree grew beside an oak.
+The state-of-the-art model runs on-device.
+Don't fuse contractions, punctuation, or hyphenated words.
+Misaki's tokenizer shouldn't split U.S. abbreviations badly.
+Kokoro-FastAPI serves https://example.com/a-path?q=one&x=2.
+Email test@example.com, then call (907) 555-0123.
+Prices rose from $5.25 to £12.00 and 50%.
+Version 3.8.0 shipped on 2026-08-07.
+One space.  Two spaces.
+Tabs	stay visible.
+Curly apostrophes shouldn’t change the tags.
+“Quoted sentences,” she said, “need cadence.”
+Wait—really? Yes... absolutely!
+Dr. Smith met Mr. Jones at 3 p.m.
+NASA and iPhone use different casing shapes.
+The live broadcast is live now.
+They used to read aloud.
+The used book was inexpensive.
+This is better than the previous result.
+Which article should we read next?
+There are several choices.
+She has been reading since noon.
+If it rains, we will remain inside.
+Section A follows Section B.
+COVID-19 changed long-form publishing.
+The file_name and camelCaseValue are identifiers.
+Emoji 😀 should remain a token.
+中文标点。English follows.

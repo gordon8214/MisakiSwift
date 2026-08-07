@@ -41,12 +41,21 @@ let package = Package(
       .copy("../../Resources/us_bart.safetensors"),
       .copy("../../Resources/us_bart_config.json"),
       .copy("../../Resources/us_gold.json"),
-      .copy("../../Resources/us_silver.json")
+      .copy("../../Resources/us_silver.json"),
+      .copy("../../Resources/spacy_tagger.safetensors"),
+      .copy("../../Resources/spacy_tokenizer.json"),
+      .copy("../../Resources/spacy_tagger.json"),
+      .copy("../../Resources/spacy_LICENSE"),
+      .copy("../../Resources/spacy_LICENSES_SOURCES")
      ]
     ),
     .testTarget(
       name: "MisakiSwiftTests",
-      dependencies: ["MisakiSwift"]
+      dependencies: ["MisakiSwift"],
+      resources: [
+        .copy("Fixtures/spacy_parity_sentences.txt"),
+        .copy("Fixtures/spacy_parity_trace.json")
+      ]
     ),
   ]
 )

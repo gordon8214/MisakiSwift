@@ -61,33 +61,16 @@ import Testing
   #expect(result.contains("jˈust"), "'used to' should be /juːst/, not /juːzd/: \(result)")
 }
 
-// KNOWN GAP, deliberately pinned rather than silently tolerated.
-//
-// gold "read" is {ADJ: ɹˈɛd, DEFAULT: ɹˈid, VBD: ɹˈɛd, VBN: ɹˈɛd, VBP: ɹˈɛd} —
-// note there is no VERB key, so the tense-specific tag is the only way in.
-// Upstream misaki gets one from spaCy's en_core_web_sm, which tags "read" in
-// "Yesterday I read the book." as VBD. This port resolves NLTagger's hybrid
-// name/POS scheme against `.lexicalClass`, but the resulting `.verb` is still
-// coarse for BOTH the past and the infinitive (verified: the tag is identical
-// in the two sentences below). No amount of lookup fixing can recover the
-// distinction — closing this needs a finer-grained POS source than NLTagger.
-//
-// Consequence: past-tense "read" is voiced /riːd/ on device and /rɛd/ on the
-// server. Same for "wound" and "reread".
-//
-// withKnownIssue means this test FAILS if the behaviour is ever fixed, which is
-// the signal to delete this block and assert the correct pronunciation.
-@Test func pastTenseReadIsAKnownNLTaggerLimitation() async throws {
+// Penn tags from the parity frontend preserve tense-sensitive lexicon keys.
+@Test func readUsesDistinctPresentAndPastReadings() async throws {
   let g2p = EnglishG2P(british: false)
 
   // Present tense is correct today and must stay correct.
   let (present, _) = g2p.phonemize(text: "Please read the book.")
   #expect(present.contains("ɹˈid"), "infinitive 'read' should be /riːd/: \(present)")
 
-  withKnownIssue("NLTagger reports coarse .verb for both tenses; needs spaCy-grade POS") {
-    let (past, _) = g2p.phonemize(text: "Yesterday I read the book.")
-    #expect(past.contains("ɹˈɛd"), "past-tense 'read' should be /rɛd/: \(past)")
-  }
+  let (past, _) = g2p.phonemize(text: "Yesterday I read the book.")
+  #expect(past.contains("ɹˈɛd"), "past-tense 'read' should be /rɛd/: \(past)")
 }
 
 // MARK: - Whitespace normalization (kokoro/pipeline.py:180-181)

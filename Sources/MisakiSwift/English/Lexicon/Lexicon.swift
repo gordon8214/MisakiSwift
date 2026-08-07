@@ -121,7 +121,7 @@ final class Lexicon {
     return phoneticString
   }
   
-  func transcribe(_ token: MToken, ctx: TokenContext) -> (String?, Int?) {
+  func transcribe(_ token: MToken, pennTag: String?, ctx: TokenContext) -> (String?, Int?) {
     var word = token.text
     if let alias = token.`_`.alias { word = alias }
     word = word.replacingOccurrences(of: String(UnicodeScalar(8216)!), with: "'")
@@ -131,7 +131,8 @@ final class Lexicon {
     word = String(word.map { unicodeNumericIfNeeded($0) } )
     
     let stress: Double? = (word == word.lowercased() ? nil : (word == word.uppercased() ? capStresses.1 : capStresses.0))
-    let res = getWord(word, tag: token.tag, stress: stress, ctx: ctx)
+    let tag = EnglishPOSTag(lexicalClass: token.tag, penn: pennTag)
+    let res = getWord(word, tag: tag, stress: stress, ctx: ctx)
     if let phoneme = res.phoneme {
       return (Lexicon.applyStress(appendCurrency(phoneme, currency: token.`_`.currency), stress: token.`_`.stress), res.rating)
     } else if isNumber(word: word, is_head: token.`_`.is_head) {
@@ -157,7 +158,12 @@ final class Lexicon {
     return c
   }
     
-  private func getWord(_ word: String, tag: NLTag?, stress: Double?, ctx: TokenContext) -> (phoneme: String?, rating: Int?) {
+  private func getWord(
+    _ word: String,
+    tag: EnglishPOSTag,
+    stress: Double?,
+    ctx: TokenContext
+  ) -> (phoneme: String?, rating: Int?) {
     let sc = getSpecialCase(word, tag: tag, stress: stress, ctx: ctx)
     if sc.phoneme != nil { return sc }
     var candidate = word
@@ -166,7 +172,7 @@ final class Lexicon {
     if word.count > 1,
        word.replacingOccurrences(of: "'", with: "").allSatisfy({ $0.isLetter }),
        word != word.lowercased(),
-       (!(tag?.isProperNoun ?? false) || word.count > 7),
+       (!tag.isProperNoun || word.count > 7),
        golds[word] == nil, silvers[word] == nil,
        (word == word.uppercased() || word.dropFirst().lowercased() == word.dropFirst()),
         (golds[wl] != nil || silvers[wl] != nil || [stem_s, stem_ed, stem_ing].contains(where: { fn in fn(wl, tag, stress, ctx).0 != nil })) {
@@ -193,11 +199,16 @@ final class Lexicon {
     return (nil, nil)
   }
   
-  private func getSpecialCase(_ word: String, tag: NLTag?, stress: Double?, ctx: TokenContext) -> (phoneme: String?, rating: Int?) {
-    if tag == .punctuation, let target = Lexicon.addSymbols[word] {
-      return lookup(target, tag: nil, stress: -0.5, ctx: ctx)
+  private func getSpecialCase(
+    _ word: String,
+    tag: EnglishPOSTag,
+    stress: Double?,
+    ctx: TokenContext
+  ) -> (phoneme: String?, rating: Int?) {
+    if tag.lexicalClass == .punctuation, let target = Lexicon.addSymbols[word] {
+      return lookup(target, tag: .none, stress: -0.5, ctx: ctx)
     } else if let sym = Lexicon.symbolSet[word] {
-      return lookup(sym, tag: nil, stress: nil, ctx: ctx)
+      return lookup(sym, tag: .none, stress: nil, ctx: ctx)
     } else if word.contains(where: { $0.isLetter }),
               word.trimmingCharacters(in: CharacterSet(charactersIn: ".")).contains(".") {
       // Acronyms like "M.R.C.S." or "C.C.H." — each dot-separated chunk is
@@ -264,10 +275,13 @@ final class Lexicon {
       //
       // Either way a caller can force the reading with a `[A](/ˈA/)` override,
       // which resolves at rating 5 and never reaches this lexicon at all.
-      if word == "A" && tag == .noun { return ("ˈA", 4) }
+      if let penn = tag.penn {
+        return penn == "DT" ? ("ɐ", 4) : ("ˈA", 4)
+      }
+      if word == "A" && tag.lexicalClass == .noun { return ("ˈA", 4) }
       return ("ɐ", 4)
     } else if ["am", "Am", "AM"].contains(word) {
-      if let t = tag, pennTag(for: t, token: word).hasPrefix("NN") {
+      if tag.resolvedPenn(for: word)?.hasPrefix("NN") == true {
         return getNNP(word)
       }
       
@@ -276,15 +290,16 @@ final class Lexicon {
       }
       return ("ɐm", 4)
     } else if ["an", "An", "AN"].contains(word) {
-      if word == "AN", let t = tag, pennTag(for: t, token: word).hasPrefix("NN") {
+      if word == "AN", tag.resolvedPenn(for: word)?.hasPrefix("NN") == true {
         return getNNP(word)
       }
       return ("ɐn", 4)
-    } else if word == "I", let tag, isPersonalPrononun(tag: tag, token: word) {
+    } else if word == "I", let lexicalClass = tag.lexicalClass,
+              isPersonalPrononun(tag: lexicalClass, token: word) {
       return (String(Lexicon.secondaryStress) + "I", 4)
     } else if ["by", "By", "BY"].contains(word), getParentTag(tag, token: word) == "ADV" {
       return ("bˈI", 4)
-    } else if ["to", "To"].contains(word) || (word == "TO" && tag == .preposition) {
+    } else if ["to", "To"].contains(word) || (word == "TO" && tag.lexicalClass == .preposition) {
       let chosen: String
       if ctx.futureVowel == nil {
         chosen = (golds["to"] as? String) ?? "to"
@@ -294,15 +309,16 @@ final class Lexicon {
         chosen = "tʊ"
       }
       return (chosen, 4)
-    } else if ["in", "In"].contains(word) || (word == "IN" && !(tag?.isProperNoun ?? false)) {
-      let s = (ctx.futureVowel == nil || tag != .preposition) ? String(Lexicon.primaryStress) : ""
+    } else if ["in", "In"].contains(word) || (word == "IN" && !tag.isProperNoun) {
+      let s = (ctx.futureVowel == nil || tag.lexicalClass != .preposition) ? String(Lexicon.primaryStress) : ""
       return (s + "ɪn", 4)
-    } else if ["the", "The"].contains(word) || (word == "THE" && tag == .determiner) {
+    } else if ["the", "The"].contains(word) || (word == "THE" && tag.lexicalClass == .determiner) {
       return (ctx.futureVowel == true ? "ði" : "ðə", 4)
-    } else if tag == .preposition, word.range(of: "(?i)vs\\.?$", options: .regularExpression) != nil {
-      return lookup("versus", tag: nil, stress: nil, ctx: ctx)
+    } else if tag.lexicalClass == .preposition,
+              word.range(of: "(?i)vs\\.?$", options: .regularExpression) != nil {
+      return lookup("versus", tag: .none, stress: nil, ctx: ctx)
     } else if ["used", "Used", "USED"].contains(word) {
-      if (tag == .verb || tag == .adjective) && ctx.futureTo {
+      if (tag.lexicalClass == .verb || tag.lexicalClass == .adjective) && ctx.futureTo {
         if let m = golds["used"] as? [String: String?], let v = m["VBD"] as? String { return (v, 4) }
       }
       if let m = golds["used"] as? [String: String?], let v = m["DEFAULT"] as? String { return (v, 4) }
@@ -311,12 +327,17 @@ final class Lexicon {
     return (nil, nil)
   }
     
-  private func lookup(_ w: String, tag: NLTag?, stress: Double?, ctx: TokenContext?) -> (phoneme: String?, rating: Int?) {
+  private func lookup(
+    _ w: String,
+    tag: EnglishPOSTag,
+    stress: Double?,
+    ctx: TokenContext?
+  ) -> (phoneme: String?, rating: Int?) {
     var word = w
     var isNNP: Bool? = nil
     if word == word.uppercased(), golds[word] == nil {
       word = word.lowercased()
-      isNNP = tag?.isProperNoun
+      isNNP = tag.isProperNoun
     }
     var phoneticString: Any? = golds[word]
     var rating = 4
@@ -343,7 +364,7 @@ final class Lexicon {
       let resolvedTag: String?
       if let ctx = ctx, ctx.futureVowel == nil, phonemeDict["None"] != nil {
         resolvedTag = "None"
-      } else if let rawTag = tag.map({ pennTag(for: $0, token: w) }), phonemeDict[rawTag] != nil {
+      } else if let rawTag = tag.resolvedPenn(for: w), phonemeDict[rawTag] != nil {
         resolvedTag = rawTag
       } else {
         resolvedTag = getParentTag(tag, token: w)
@@ -360,9 +381,8 @@ final class Lexicon {
     return (applied, rating)
   }
   
-  private func getParentTag(_ tag: NLTag?, token: String?) -> String? {
-    guard let tag = tag else { return "XX" }
-    let pennTag = pennTag(for: tag, token: token)
+  private func getParentTag(_ tag: EnglishPOSTag, token: String?) -> String? {
+    guard let pennTag = tag.resolvedPenn(for: token) else { return "XX" }
     if pennTag.hasPrefix("VB") { return "VERB" }
     if pennTag.hasPrefix("NN") { return "NOUN" }
     if pennTag.hasPrefix("ADV") || pennTag.hasPrefix("RB") { return "ADV" }
@@ -409,7 +429,12 @@ final class Lexicon {
     return word[idx...].uppercased() == word[idx...]
   }
   
-  private func stem_s(_ word: String, tag: NLTag?, stress: Double?, ctx: TokenContext?) -> (phoneme: String?, rating: Int?) {
+  private func stem_s(
+    _ word: String,
+    tag: EnglishPOSTag,
+    stress: Double?,
+    ctx: TokenContext?
+  ) -> (phoneme: String?, rating: Int?) {
     guard word.count >= 3, word.hasSuffix("s") else { return (nil, nil) }
     var stem: String?
     
@@ -443,7 +468,12 @@ final class Lexicon {
     return stem + "ᵻd"
   }
 
-  private func stem_ed(_ word: String, tag: NLTag?, stress: Double?, ctx: TokenContext?) -> (phoneme: String?, rating: Int?) {
+  private func stem_ed(
+    _ word: String,
+    tag: EnglishPOSTag,
+    stress: Double?,
+    ctx: TokenContext?
+  ) -> (phoneme: String?, rating: Int?) {
     guard word.count >= 4, word.hasSuffix("d") else { return (nil, nil) }
     var stem: String?
     
@@ -472,7 +502,12 @@ final class Lexicon {
     return stem + "ɪŋ"
   }
 
-  private func stem_ing(_ word: String, tag: NLTag?, stress: Double?, ctx: TokenContext?) -> (phoneme: String?, rating: Int?) {
+  private func stem_ing(
+    _ word: String,
+    tag: EnglishPOSTag,
+    stress: Double?,
+    ctx: TokenContext?
+  ) -> (phoneme: String?, rating: Int?) {
     guard word.count >= 5, word.hasSuffix("ing") else { return (nil, nil) }
     var stem: String?
     
@@ -501,7 +536,7 @@ final class Lexicon {
     guard let phoneme, let currency else { return phoneme }
     
     if let pair = Lexicon.currencies[currency] {
-      if let plural = stem_s(pair.0 + "s", tag: nil, stress: nil, ctx: nil).phoneme {
+      if let plural = stem_s(pair.0 + "s", tag: .none, stress: nil, ctx: nil).phoneme {
         return phoneme + " " + plural
       }
     }
@@ -534,7 +569,7 @@ final class Lexicon {
     var result: [(String, Int)] = []
 
     func appendLookup(_ w: String, s: Double?) {
-      let looked = lookup(w, tag: nil, stress: s, ctx: nil)
+      let looked = lookup(w, tag: .none, stress: s, ctx: nil)
       if let p = looked.0, let r = looked.1 { result.append((p, r)) }
     }
     
@@ -597,7 +632,7 @@ final class Lexicon {
       } else if num.count == 3 && !num.hasSuffix("00") {
         extend_num(String(num.first!))
         if num[num.index(num.startIndex, offsetBy: 1)] == "0" {
-          result.append(lookup("O", tag: nil, stress: -2, ctx: nil) as! (String, Int))
+          result.append(lookup("O", tag: .none, stress: -2, ctx: nil) as! (String, Int))
           extend_num(String(num.last!), first: false)
         } else {
           extend_num(String(num.suffix(2)), first: false)
@@ -633,7 +668,9 @@ final class Lexicon {
               if i > 0 { appendLookup("and", s: nil) }
               extend_num(String(num), first: i == 0)
               if abs(num) != 1 && unit != "pence" {
-                  if let s = stem_s(unit + "s", tag: nil, stress: nil, ctx: nil).0 { result.append((s, 4)) }
+                  if let s = stem_s(unit + "s", tag: .none, stress: nil, ctx: nil).0 {
+                    result.append((s, 4))
+                  }
               } else {
                   appendLookup(unit, s: nil)
               }
