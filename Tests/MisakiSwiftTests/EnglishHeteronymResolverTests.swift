@@ -3,6 +3,34 @@ import Testing
 @testable import MisakiSwift
 
 struct EnglishHeteronymResolverTests {
+  @Test func coordinateUsesTheVerbReadingAfterAnInfinitiveOrModal() {
+    let contexts = ["to", "can", "could", "may", "might", "must", "shall", "should", "will", "would"]
+
+    for previousWord in contexts {
+      #expect(EnglishHeteronymResolver.resolvedTag(
+        for: "coordinate",
+        currentTag: .noun,
+        previousWord: previousWord,
+        nextWord: "donations"
+      ) == .verb)
+    }
+  }
+
+  @Test func coordinateKeepsNominalAndAdjectivalReadings() {
+    #expect(EnglishHeteronymResolver.resolvedTag(
+      for: "coordinate",
+      currentTag: .noun,
+      previousWord: "GPS",
+      nextWord: nil
+    ) == .noun)
+    #expect(EnglishHeteronymResolver.resolvedTag(
+      for: "coordinate",
+      currentTag: .adjective,
+      previousWord: nil,
+      nextWord: "system"
+    ) == .adjective)
+  }
+
   @Test func contentUsesTheNounReadingBeforeScraping() {
     let sourceTags: [NLTag?] = [nil, .otherWord, .adjective, .noun]
 

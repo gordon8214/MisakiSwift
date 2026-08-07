@@ -32,6 +32,16 @@ enum EnglishHeteronymResolver {
     "scraper", "scrapers", "scraping"
   ]
 
+  // The iOS lexical tagger can call the infinitive in "to coordinate
+  // donations" a noun, selecting the noun/adjective reading ending in
+  // /-nət/ instead of the verb reading ending in /-neɪt/. A preceding
+  // infinitive marker or modal is stronger evidence than that tag. Limit the
+  // correction to those contexts so nominal and adjectival uses such as
+  // "GPS coordinate" and "coordinate system" retain the default reading.
+  private static let coordinateVerbLeftContexts: Set<String> = [
+    "to", "can", "could", "may", "might", "must", "shall", "should", "will", "would"
+  ]
+
   static func resolve(tokens: [MToken]) {
     for (index, token) in tokens.enumerated() where token.phonemes == nil {
       let previousWord = tokens[..<index].reversed().compactMap(normalizedWord).first
@@ -52,6 +62,11 @@ enum EnglishHeteronymResolver {
     nextWord: String?
   ) -> NLTag? {
     switch word.lowercased() {
+    case "coordinate":
+      if let previousWord, coordinateVerbLeftContexts.contains(previousWord) {
+        return .verb
+      }
+      return currentTag
     case "content":
       if let nextWord, contentNounRightContexts.contains(nextWord) {
         return .noun
