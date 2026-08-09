@@ -438,9 +438,18 @@ final class Lexicon {
     guard word.count >= 3, word.hasSuffix("s") else { return (nil, nil) }
     var stem: String?
     
-    if !word.hasSuffix("ss"), isKnown(String(word.dropLast())) {
+    // A possessive clitic must lose both apostrophe and `s` before the generic
+    // plural path is considered. For an all-caps word such as `NASA's`,
+    // `isKnown("NASA'")` accepts the capitalized fallback shape; looking that
+    // pseudo-stem up then spells N-A-S-A. Resolving the explicit possessive
+    // first preserves the base lexicon reading and only pluralizes its final
+    // phoneme, matching the deployed Python frontend (`nˈæsə` → `nˈæsəz`).
+    if word.hasSuffix("'s"), isKnown(String(word.dropLast(2))) {
+      stem = String(word.dropLast(2))
+    } else if !word.hasSuffix("ss"), isKnown(String(word.dropLast())) {
       stem = String(word.dropLast())
-    } else if (word.hasSuffix("'s") || (word.count > 4 && word.hasSuffix("es") && !word.hasSuffix("ies"))), isKnown(String(word.dropLast(2))) {
+    } else if word.count > 4 && word.hasSuffix("es") && !word.hasSuffix("ies"),
+              isKnown(String(word.dropLast(2))) {
       stem = String(word.dropLast(2))
     } else if word.count > 4 && word.hasSuffix("ies"), isKnown(String(word.dropLast(3)) + "y") {
       stem = String(word.dropLast(3)) + "y"

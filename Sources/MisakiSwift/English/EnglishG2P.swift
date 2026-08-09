@@ -48,12 +48,15 @@ final public class EnglishG2P {
   static let nonQuotePunctuations: Set<Character> = Set(punctuactions.filter { !"\"“”".contains($0) })
   static let vowels: Set<Character> = Set("AIOQWYaiuæɑɒɔəɛɜɪʊʌᵻ")
   static let consonants: Set<Character> = Set("bdfhjklmnpstvwzðŋɡɹɾʃʒʤʧθ")
-  static let subTokenJunks: Set<Character> = Set("',-._''/")
+  static let subTokenJunks: Set<Character> = Set("'’‘,-._/")
   static let stresses = "ˌˈ"
   static let primaryStress = stresses[stresses.index(stresses.startIndex, offsetBy: 1)]
   static let secondaryStress = stresses[stresses.index(stresses.startIndex, offsetBy: 0)]
-  // Splits words into subtokens such as acronym boundaries, signs, commas, decimals, multiple quotes, camelCase boundaries and so forth.
-  static let subtokenizeRegexPattern = #"^[''']+|\p{Lu}(?=\p{Lu}\p{Ll})|(?:^-)?(?:\d?[,.]?\d)+|[-_]+|[''']{2,}|\p{L}*?(?:[''']\p{L})*?\p{Ll}(?=\p{Lu})|\p{L}+(?:[''']\p{L})*|[^-_\p{L}'''\d]|[''']+$"#
+  // Splits words into subtokens such as acronym boundaries, signs, commas,
+  // decimals, multiple quotes and camelCase boundaries. Curly apostrophes are
+  // part of the same word shape as ASCII apostrophes; splitting `NASA’s` into
+  // `NASA`, `’`, `s` inserts a second separator after the possessive phoneme.
+  static let subtokenizeRegexPattern = #"^['’‘]+|\p{Lu}(?=\p{Lu}\p{Ll})|(?:^-)?(?:\d?[,.]?\d)+|[-_]+|['’‘]{2,}|\p{L}*?(?:['’‘]\p{L})*?\p{Ll}(?=\p{Lu})|\p{L}+(?:['’‘]\p{L})*|[^-_\p{L}'’‘\d]|['’‘]+$"#
   static let subtokenizeRegex = try! NSRegularExpression(pattern: EnglishG2P.subtokenizeRegexPattern, options: [])
   
   struct PreprocessFeature {
