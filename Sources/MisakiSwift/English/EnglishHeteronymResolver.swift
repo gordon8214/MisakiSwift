@@ -42,6 +42,13 @@ enum EnglishHeteronymResolver {
     "to", "can", "could", "may", "might", "must", "shall", "should", "will", "would"
   ]
 
+  // The gold lexicon stores the /tɛɹ/ reading of "tear" under VERB and
+  // uses the /tɪɹ/ teardrop reading as DEFAULT. In the fixed expression
+  // "wear and tear", however, "tear" is grammatically a noun, so even an
+  // accurate tag selects the wrong entry. Match the complete local expression
+  // before borrowing the verb tag solely to select the intended phonemes.
+  private static let wearAndTearLeftContext = ("wear", "and")
+
   // en_core_web_sm still labels an uppercase letter as DT in a few compact
   // noun labels (notably "Hepatitis A vaccine"). These heads are positive
   // evidence for a letter name; ordinary sentence-initial and mid-sentence
@@ -53,7 +60,9 @@ enum EnglishHeteronymResolver {
 
   static func resolve(tokens: [MToken], pennTags: inout PennTagMap) {
     for (index, token) in tokens.enumerated() where token.phonemes == nil {
-      let previousWord = tokens[..<index].reversed().compactMap(normalizedWord).first
+      let previousWords = tokens[..<index].reversed().compactMap(normalizedWord)
+      let previousWord = previousWords.first
+      let wordBeforePrevious = previousWords.dropFirst().first
       let nextWord = tokens.dropFirst(index + 1).compactMap(normalizedWord).first
       if token.text == "A",
          pennTags[ObjectIdentifier(token)] == "DT",
@@ -68,7 +77,8 @@ enum EnglishHeteronymResolver {
         for: token.text,
         currentTag: originalTag,
         previousWord: previousWord,
-        nextWord: nextWord
+        nextWord: nextWord,
+        wordBeforePrevious: wordBeforePrevious
       )
       token.tag = tag
       guard tag != originalTag else {
@@ -91,7 +101,8 @@ enum EnglishHeteronymResolver {
     for word: String,
     currentTag: NLTag?,
     previousWord: String?,
-    nextWord: String?
+    nextWord: String?,
+    wordBeforePrevious: String? = nil
   ) -> NLTag? {
     switch word.lowercased() {
     case "coordinate":
@@ -115,6 +126,11 @@ enum EnglishHeteronymResolver {
         return currentTag
       }
       if let previousWord, liveVerbLeftContexts.contains(previousWord) {
+        return .verb
+      }
+      return currentTag
+    case "tear":
+      if (wordBeforePrevious, previousWord) == wearAndTearLeftContext {
         return .verb
       }
       return currentTag
