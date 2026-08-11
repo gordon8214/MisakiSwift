@@ -3,11 +3,11 @@ import Testing
 
 struct JalapenoPronunciationTests {
   private static let fixtures: [(british: Bool, singular: String, plural: String)] = [
-    (false, "ʤˌæləpˈinjO", "ʤˌæləpˈinjOz"),
-    (true, "ʤˌaləpˈiːnjQ", "ʤˌaləpˈiːnjQz")
+    (false, "hˌæləpˈinjO", "hˌæləpˈinjOz"),
+    (true, "hˌaləpˈiːnjQ", "hˌaləpˈiːnjQz")
   ]
 
-  @Test func enyeIsPreservedInSingularAndPluralForms() throws {
+  @Test func spanishJAndEnyeArePreservedInSingularAndPluralForms() throws {
     for fixture in Self.fixtures {
       let g2p = try EnglishG2P(
         british: fixture.british,
@@ -22,6 +22,7 @@ struct JalapenoPronunciationTests {
 
       for (text, expected) in forms {
         let actual = g2p.phonemize(text: text).0
+        #expect(actual.first == "h", "used an English j onset for \(text.debugDescription): \(actual)")
         #expect(
           actual == expected,
           "wrong jalapeño pronunciation for \(text.debugDescription): \(actual)"
