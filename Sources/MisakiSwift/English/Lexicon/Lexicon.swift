@@ -33,11 +33,16 @@ final class Lexicon {
     self.british = british
     // Load and grow dictionaries
     let rawGolds = DataResourcesUtil.loadGold(british: british)
+      .merging(Lexicon.supplementalGolds(british: british)) { _, supplement in supplement }
     let rawSilvers = DataResourcesUtil.loadSilver(british: british)
     self.golds = Lexicon.growDictionary(rawGolds)
     self.silvers = Lexicon.growDictionary(rawSilvers)
   
     self.vocab = british ? Lexicon.gbVocab : Lexicon.usVocab
+  }
+
+  private static func supplementalGolds(british: Bool) -> [String: Any] {
+    ["niño": british ? "nˈiːnjQ" : "nˈinjO"]
   }
     
   /// Grows a dictionary by adding capitalized / lowercase variants of existing word keys
