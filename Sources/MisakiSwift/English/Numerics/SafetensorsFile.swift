@@ -14,6 +14,10 @@ import Foundation
 /// rejected by name. Values are little-endian, which matches every platform
 /// this package supports.
 struct SafetensorsFile {
+  /// `values.count == shape.reduce(1, *)`, and every dimension is
+  /// non-negative. Load-bearing, not incidental: `SpacyEnglishTagger`'s
+  /// embedding-gather bounds proof and every `MatrixMath.transposed` call site
+  /// rest on it, and the byte-length guard in `init` is what establishes it.
   struct Tensor {
     let shape: [Int]
     let values: [Float]
@@ -63,9 +67,27 @@ struct SafetensorsFile {
         throw SpacyParityError.invalidResource("\(name) ('\(key)' is \(dtype), expected F32)")
       }
 
+      // Every quantity below comes out of the file's own header, so all the
+      // arithmetic is bounded before it is performed. Trapping on overflow
+      // would abort the process from inside a `throws` initializer whose whole
+      // purpose is to report a bad file — and a single flipped byte in the
+      // header JSON is enough to reach it.
       let (start, end) = (offsets[0], offsets[1])
-      let count = shape.reduce(1, *)
-      guard start >= 0, start <= end, headerEnd + end <= data.count,
+      guard start >= 0, start <= end, end <= data.count - headerEnd else {
+        throw SpacyParityError.invalidResource("\(name) ('\(key)' has out-of-range offsets)")
+      }
+      var count = 1
+      for dimension in shape {
+        let (product, overflowed) = count.multipliedReportingOverflow(by: dimension)
+        guard dimension >= 0, !overflowed else {
+          throw SpacyParityError.invalidResource("\(name) ('\(key)' has an unusable shape \(shape))")
+        }
+        count = product
+      }
+      // Bounded before multiplying: nothing legitimate holds more elements
+      // than the file has room for, and this is what keeps the byte-count
+      // below from overflowing on an absurd single dimension.
+      guard count <= data.count / MemoryLayout<Float>.size,
             end - start == count * MemoryLayout<Float>.size else {
         throw SpacyParityError.invalidResource("\(name) ('\(key)' has out-of-range offsets)")
       }

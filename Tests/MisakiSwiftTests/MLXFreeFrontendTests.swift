@@ -38,22 +38,42 @@ import MLXUtilsLibrary
       FileManager.default.enumerator(at: sourcesDirectory, includingPropertiesForKeys: nil)
     )
     var scanned = 0
+    var sawFrontendEntryPoint = false
     var offenders: [String] = []
 
     for case let url as URL in enumerator where url.pathExtension == "swift" {
       scanned += 1
+      if url.lastPathComponent == "EnglishG2P.swift" { sawFrontendEntryPoint = true }
       let source = try String(contentsOf: url, encoding: .utf8)
       for line in source.split(separator: "\n", omittingEmptySubsequences: true) {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard trimmed.hasPrefix("import ") else { continue }
-        let module = String(trimmed.dropFirst("import ".count))
-          .trimmingCharacters(in: .whitespaces)
+        // Attributes and import kinds are stripped first: `@preconcurrency
+        // import MLX`, `@testable import MLX` and `import struct MLX.MLXArray`
+        // all reintroduce MLX, and all of them slip past a bare
+        // `hasPrefix("import ")` test — which is exactly how someone would
+        // spell it while working around this guard.
+        var rest = Substring(trimmed)
+        while rest.hasPrefix("@") {
+          rest = rest.drop { !$0.isWhitespace }.drop { $0.isWhitespace }
+        }
+        guard rest.hasPrefix("import ") else { continue }
+        rest = rest.dropFirst("import ".count).drop { $0.isWhitespace }
+        for kind in ["struct ", "class ", "enum ", "func ", "typealias ", "var ", "let ", "protocol "]
+        where rest.hasPrefix(kind) {
+          rest = rest.dropFirst(kind.count).drop { $0.isWhitespace }
+        }
+        // `import struct MLX.MLXArray` names the module before the first dot.
+        let module = String(rest.prefix { !$0.isWhitespace }).split(separator: ".").first.map(String.init) ?? ""
+
         guard module.hasPrefix("MLX"), !Self.allowedImports.contains(module) else { continue }
         offenders.append("\(url.lastPathComponent): \(module)")
       }
     }
 
-    #expect(scanned > 20, "expected to scan the whole frontend, saw \(scanned) files")
+    // A count assertion alone sits on the boundary — this very change deleted
+    // six files and added three — so pin a file that must always be scanned.
+    #expect(scanned >= 10, "expected to scan the whole frontend, saw \(scanned) files")
+    #expect(sawFrontendEntryPoint, "EnglishG2P.swift was not scanned; is the path still right?")
     #expect(offenders.isEmpty, "MLX reached the frontend again: \(offenders.joined(separator: ", "))")
   }
 

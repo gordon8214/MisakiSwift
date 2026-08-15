@@ -90,12 +90,18 @@ final class SpacyEnglishTagger {
     } catch {
       throw SpacyParityError.invalidResource("spacy_tagger")
     }
+    // `features.rows` is a modulus at gather time and `labels` indexes the tag
+    // head, so both have to be positive here or the failure is an arithmetic
+    // trap inside the non-throwing `trace(_:)` rather than an error this
+    // initializer can report.
     guard configuration.version == SpacyTokenizer.modelVersion,
           configuration.width == 96,
           configuration.window == 1,
           configuration.depth == 4,
           configuration.maxoutPieces == 3,
-          configuration.features.count == 6 else {
+          configuration.features.count == 6,
+          configuration.features.allSatisfy({ $0.rows > 0 }),
+          !configuration.labels.isEmpty else {
       throw SpacyParityError.unsupportedModel(configuration.version)
     }
 
@@ -142,6 +148,41 @@ final class SpacyEnglishTagger {
     tagger = try LinearLayer(weight: tensor("tagger.W"), bias: tensor("tagger.b"))
     guard tagger.bias?.count == configuration.labels.count else {
       throw SpacyParityError.invalidResource("spacy_tagger (tagger head does not match the labels)")
+    }
+
+    // Widths, which none of the layer initializers can check for themselves —
+    // each validates only its own internal consistency. Without this a weights
+    // file whose widths disagree with `spacy_tagger.json` loads cleanly and
+    // then dies on a bare "matmul shape mismatch" precondition inside
+    // `trace(_:)`, which is non-throwing and runs on every phonemization. The
+    // whole point of this initializer throwing is that a damaged resource is
+    // reported, not fatal. `weight.rows` is the INPUT width, since every
+    // `LinearLayer` / `SpacyMaxoutLayer` transposes at load.
+    let width = configuration.width
+    let windowWidth = width * (2 * configuration.window + 1)
+    var widthProblem: String?
+    if embedProjection.weight.rows != configuration.features.count * width {
+      widthProblem = "embed_projection.W takes \(embedProjection.weight.rows) inputs, expected \(configuration.features.count * width)"
+    } else if embedProjection.outputs != width || embedProjection.pieces != configuration.maxoutPieces {
+      widthProblem = "embed_projection.W is \(embedProjection.outputs)x\(embedProjection.pieces), expected \(width)x\(configuration.maxoutPieces)"
+    } else if embedLayerNorm.gain.count != width {
+      widthProblem = "embed_layer_norm is \(embedLayerNorm.gain.count) wide, expected \(width)"
+    } else if tagger.weight.rows != width {
+      widthProblem = "tagger.W takes \(tagger.weight.rows) inputs, expected \(width)"
+    } else {
+      for (index, block) in blocks.enumerated() {
+        if block.maxout.weight.rows != windowWidth {
+          widthProblem = "block.\(index).maxout.W takes \(block.maxout.weight.rows) inputs, expected \(windowWidth)"
+        } else if block.maxout.outputs != width || block.maxout.pieces != configuration.maxoutPieces {
+          widthProblem = "block.\(index).maxout.W is \(block.maxout.outputs)x\(block.maxout.pieces), expected \(width)x\(configuration.maxoutPieces)"
+        } else if block.layerNorm.gain.count != width {
+          widthProblem = "block.\(index).layer_norm is \(block.layerNorm.gain.count) wide, expected \(width)"
+        }
+        if widthProblem != nil { break }
+      }
+    }
+    if let widthProblem {
+      throw SpacyParityError.invalidResource("spacy_tagger (\(widthProblem))")
     }
   }
 

@@ -74,8 +74,11 @@ import Testing
   /// plausible-looking garbage rather than to an error.
   @Test func anUnsupportedDtypeIsRejected() throws {
     let url = try write(
-      header: ["w": entry(dtype: "F16", shape: [2], start: 0, end: 4)],
-      data: [1, 2]
+      // Geometry deliberately VALID (one F32 = 4 bytes), so the dtype guard is
+      // the only thing that can reject it — otherwise reordering the guards
+      // would leave this green while testing nothing about dtype.
+      header: ["w": entry(dtype: "F16", shape: [1], start: 0, end: 4)],
+      data: [1]
     )
     defer { try? FileManager.default.removeItem(at: url) }
 
@@ -100,6 +103,39 @@ import Testing
     defer { try? FileManager.default.removeItem(at: url) }
 
     #expect(throws: SpacyParityError.self) { _ = try SafetensorsFile(contentsOf: url) }
+  }
+
+  /// A negative dimension survives `shape.reduce(1, *)` when the signs cancel
+  /// — `[-2, -48]` has a product of +96 — so it passes the byte-length check
+  /// and reaches `MatrixMath.transposed`, which traps converting it to a
+  /// `vDSP_Length`. That names neither the file nor the tensor.
+  @Test func negativeShapeDimensionsAreRejected() throws {
+    let url = try write(
+      header: ["w": entry(shape: [-2, -48], start: 0, end: 384)],
+      data: [Float](repeating: 0, count: 96)
+    )
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    #expect(throws: SpacyParityError.self) { _ = try SafetensorsFile(contentsOf: url) }
+  }
+
+  /// The three arithmetic overflows a corrupt header can reach. Each used to
+  /// trap — aborting the process from inside a `throws` initializer whose only
+  /// job is to report a bad file, and which `SpacyEnglishTagger.init` wraps in
+  /// a `do/catch` that cannot catch a trap.
+  @Test func headerArithmeticThatWouldOverflowIsRejected() throws {
+    let cases: [(String, [String: Any])] = [
+      ("shape product", entry(shape: [3_037_000_500, 3_037_000_500], start: 0, end: 4)),
+      ("byte count", entry(shape: [2_305_843_009_213_693_952], start: 0, end: 4)),
+      ("offset end", entry(shape: [1], start: 0, end: Int.max))
+    ]
+    for (label, header) in cases {
+      let url = try write(header: ["w": header], data: [1])
+      defer { try? FileManager.default.removeItem(at: url) }
+      #expect(throws: SpacyParityError.self, "\(label) was not rejected") {
+        _ = try SafetensorsFile(contentsOf: url)
+      }
+    }
   }
 
   /// A header length larger than the file must not be used to address memory

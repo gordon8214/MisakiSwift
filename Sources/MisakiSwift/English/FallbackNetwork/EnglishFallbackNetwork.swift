@@ -15,19 +15,20 @@ final class EnglishFallbackNetwork {
   private let graphemeToToken: [Character: Int]
   private let tokenToPhoneme: [Int: Character]
 
-  private let british: Bool
-
   init(british: Bool) {
+    // `fatalError`, not `preconditionFailure`: the latter's message is an
+    // autoclosure the stdlib evaluates only in debug configurations, so under
+    // `-O` — the build that ships — the trap fires with the string discarded
+    // and the crash report names neither the dialect nor the reason.
     guard let configuration = EnglishFallbackNetwork.loadConfig(british: british) else {
-      preconditionFailure("Missing or unreadable BART config for \(british ? "gb" : "us")")
+      fatalError("Missing or unreadable BART config for \(british ? "gb" : "us")")
     }
     guard let weightsURL = Bundle.module.url(
       forResource: "\(british ? "gb" : "us")_bart", withExtension: "safetensors"
     ) else {
-      preconditionFailure("Missing BART weights for \(british ? "gb" : "us")")
+      fatalError("Missing BART weights for \(british ? "gb" : "us")")
     }
     self.configuration = configuration
-    self.british = british
     do {
       self.model = try BARTNetwork(
         configuration: configuration, file: try SafetensorsFile(contentsOf: weightsURL)
@@ -36,7 +37,7 @@ final class EnglishFallbackNetwork {
       // A bundled resource, so this is a broken build rather than a runtime
       // condition — the same outcome the force-unwrapped MLX loader had, with a
       // message that says which file and why.
-      preconditionFailure("Unusable BART weights for \(british ? "gb" : "us"): \(error)")
+      fatalError("Unusable BART weights for \(british ? "gb" : "us"): \(error)")
     }
 
     var graphemeDict: [Character: Int] = [:]
@@ -57,7 +58,7 @@ final class EnglishFallbackNetwork {
 
     for char in graphemes {
       if let tokenId = graphemeToToken[char] {
-        tokens.append(Int(tokenId))
+        tokens.append(tokenId)
       } else {
         tokens.append(EnglishFallbackNetwork.unknownTokenId)
       }
@@ -72,7 +73,7 @@ final class EnglishFallbackNetwork {
 
     for token in tokens {
       if token > EnglishFallbackNetwork.unknownTokenId {
-        if let phoneme = tokenToPhoneme[Int(token)] {
+        if let phoneme = tokenToPhoneme[token] {
           phonemes += String(phoneme)
         }
       }

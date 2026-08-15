@@ -21,6 +21,14 @@ struct FloatMatrix {
   var values: [Float]
 
   init(rows: Int, columns: Int, values: [Float]) {
+    // Four vDSP calls below address memory bounded by `values.count` while
+    // deriving their write lengths from `rows`/`columns`. Enforcing the
+    // identity here is what makes them safe by construction rather than by
+    // caller discipline spread across three files.
+    precondition(
+      rows >= 0 && columns >= 0 && values.count == rows * columns,
+      "FloatMatrix shape mismatch: \(rows)x\(columns) with \(values.count) values"
+    )
     self.rows = rows
     self.columns = columns
     self.values = values
@@ -246,9 +254,25 @@ enum MatrixMath {
   }
 
   /// Sums `keysPerRow` embedding rows per output row — the hash-embed gather.
+  ///
+  /// The only gather here that reads through a raw pointer, so unlike
+  /// `embeddingRows` a bad index corrupts instead of trapping. The caller's
+  /// guarantee (`table.shape == [feature.rows, width]` and indices taken
+  /// modulo `feature.rows`) lives in another file, so it is restated here.
   static func summedEmbeddingRows(
     table: [Float], width: Int, indexes: [Int], keysPerRow: Int
   ) -> FloatMatrix {
+    precondition(width > 0 && keysPerRow > 0, "embedding gather needs positive dimensions")
+    precondition(
+      table.count % width == 0, "embedding table is not a multiple of its width"
+    )
+    precondition(
+      indexes.count % keysPerRow == 0, "ragged embedding index list"
+    )
+    let tableRows = table.count / width
+    precondition(
+      indexes.allSatisfy { $0 >= 0 && $0 < tableRows }, "embedding index out of range"
+    )
     let rows = indexes.count / keysPerRow
     var result = [Float](repeating: 0, count: rows * width)
     result.withUnsafeMutableBufferPointer { destination in
@@ -270,9 +294,12 @@ enum MatrixMath {
 
   /// Side-by-side join: `[T, A]` and `[T, B]` → `[T, A + B]`.
   static func horizontallyConcatenated(_ lhs: FloatMatrix, _ rhs: FloatMatrix) -> FloatMatrix {
+    // Above the early returns, not below: the zero-column accumulator both
+    // callers seed with is exactly the case that would otherwise skip the
+    // check and silently adopt the other operand's row count.
+    precondition(lhs.rows == rhs.rows, "concat shape mismatch")
     guard lhs.columns > 0 else { return rhs }
     guard rhs.columns > 0 else { return lhs }
-    precondition(lhs.rows == rhs.rows, "concat shape mismatch")
     let columns = lhs.columns + rhs.columns
     var result = [Float](repeating: 0, count: lhs.rows * columns)
     for row in 0..<lhs.rows {
@@ -304,8 +331,19 @@ enum MatrixMath {
   }
 
   /// `[rows, columns]` → `[columns, rows]`.
+  ///
+  /// `vDSP_mtrans` writes `rows * columns` floats unconditionally, so sizing
+  /// the destination from `values.count` instead is an out-of-bounds write the
+  /// moment the two disagree — and Accelerate is uninstrumented, so it corrupts
+  /// silently rather than trapping. The precondition and the explicit count are
+  /// what close that.
   static func transposed(_ values: [Float], rows: Int, columns: Int) -> FloatMatrix {
-    var result = [Float](repeating: 0, count: values.count)
+    precondition(rows >= 0 && columns >= 0, "negative matrix dimension")
+    precondition(
+      values.count == rows * columns,
+      "transpose shape mismatch: \(rows)x\(columns) with \(values.count) values"
+    )
+    var result = [Float](repeating: 0, count: rows * columns)
     values.withUnsafeBufferPointer { source in
       result.withUnsafeMutableBufferPointer { destination in
         vDSP_mtrans(

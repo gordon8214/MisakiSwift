@@ -32,7 +32,10 @@ struct BARTNetwork {
     let headDimension: Int
 
     init(prefix: String, file: SafetensorsFile, model: Int, heads: Int) throws {
-      guard model % heads == 0 else {
+      // `heads > 0` FIRST: `model % heads` traps on zero while evaluating the
+      // guard meant to reject it, and a negative count passes `% == 0` and
+      // then forms an invalid Range in the head loop.
+      guard heads > 0, model > 0, model % heads == 0 else {
         throw SpacyParityError.invalidResource("bart (d_model \(model) is not divisible by \(heads) heads)")
       }
       self.heads = heads
@@ -47,6 +50,18 @@ struct BARTNetwork {
       self.key = try projection("k_proj")
       self.value = try projection("v_proj")
       self.output = try projection("out_proj")
+
+      // The head loop derives every column span from `model`, not from the
+      // projections' actual width, so a projection that disagrees would slice
+      // past the end of a row or silently drop the tail. Each weight is
+      // transposed at load, hence `[inputs, outputs]`.
+      for (name, layer) in [
+        ("q_proj", query), ("k_proj", key), ("v_proj", value), ("out_proj", output)
+      ] where layer.weight.rows != model || layer.weight.columns != model {
+        throw SpacyParityError.invalidResource(
+          "bart (\(prefix).\(name) is \(layer.weight.rows)x\(layer.weight.columns), expected \(model)x\(model))"
+        )
+      }
     }
 
     /// `keyValue` is the encoder output for cross-attention, and `queries`
@@ -183,6 +198,13 @@ struct BARTNetwork {
       // a future export might rely on.
       throw SpacyParityError.invalidResource("bart (scale_embedding is not supported)")
     }
+    // Every dimension below is a divisor, a stride, or an allocation size, and
+    // all of them come from JSON. A zero `dModel` divides by zero in
+    // `positionCount`; the rest produce empty or inverted ranges.
+    guard configuration.dModel > 0, configuration.vocabSize > 0,
+          configuration.maxPositionEmbeddings > 0 else {
+      throw SpacyParityError.invalidResource("bart (config has a non-positive dimension)")
+    }
     model = configuration.dModel
     vocabulary = configuration.vocabSize
     bosTokenId = configuration.bosTokenId
@@ -195,6 +217,21 @@ struct BARTNetwork {
     tokenEmbedding = shared.values
     languageModelHead = MatrixMath.transposed(shared.values, rows: vocabulary, columns: model)
 
+    // The only two tensors that were loaded shape-blind. `positionCount` infers
+    // rows by dividing by `model`, so a table exported at a different width
+    // yields misaligned rows that stay in bounds — wrong phonemes, no error —
+    // and a table under three rows makes `encode`'s truncation take a negative
+    // prefix. Validating the shape makes the row count a fact rather than a
+    // guess and removes both by construction.
+    let expectedPositions = [configuration.maxPositionEmbeddings + Self.positionOffset, model]
+    for name in ["encoder", "decoder"] {
+      let table = try file.required("model.\(name).embed_positions.weight")
+      guard table.shape == expectedPositions else {
+        throw SpacyParityError.invalidResource(
+          "bart (model.\(name).embed_positions.weight is \(table.shape), expected \(expectedPositions))"
+        )
+      }
+    }
     encoderPositions = try file.required("model.encoder.embed_positions.weight").values
     decoderPositions = try file.required("model.decoder.embed_positions.weight").values
     encoderNorm = try file.layerNorm("model.encoder.layernorm_embedding")
@@ -236,7 +273,7 @@ struct BARTNetwork {
     return hidden
   }
 
-  func encode(_ tokens: [Int]) -> FloatMatrix {
+  private func encode(_ tokens: [Int]) -> FloatMatrix {
     // Positions are a direct table lookup, so an over-long token would read
     // past the end of it. Words arriving here are single lexicon misses and the
     // table holds 64 of them, but a pathological one (a URL-shaped token, say)
@@ -252,7 +289,7 @@ struct BARTNetwork {
   }
 
   /// Logits for every position of `tokens`.
-  func decode(_ tokens: [Int], encoderOutput: FloatMatrix) -> FloatMatrix {
+  private func decode(_ tokens: [Int], encoderOutput: FloatMatrix) -> FloatMatrix {
     var hidden = decoderNorm(embedded(tokens, positions: decoderPositions))
     for layer in decoderLayers { hidden = layer(hidden, encoderOutput: encoderOutput) }
     var logits = MatrixMath.multiply(hidden, languageModelHead)
@@ -260,12 +297,14 @@ struct BARTNetwork {
     return logits
   }
 
-  /// Greedy decode. Returns the generated token ids, EOS excluded.
+  /// Greedy decode. Returns the generated token ids; a model-produced EOS is
+  /// dropped, an EOS emitted because the length limit was reached is not.
   ///
   /// `maxLength` and the terminal-EOS behaviour mirror the MLX original: the
   /// last iteration emits EOS rather than a token, and EOS is not appended when
   /// the model produces it on its own.
   func generate(inputTokens: [Int], maxLength: Int = 50) -> [Int] {
+    precondition(maxLength > 0, "maxLength must be positive")
     let encoderOutput = encode(inputTokens)
     var decoded = [bosTokenId]
     var generated: [Int] = []
@@ -280,8 +319,12 @@ struct BARTNetwork {
       if next == eosTokenId { break }
       generated.append(next)
       decoded.append(next)
-      // Same bound as `encode`, on the growing prefix rather than the input.
-      if decoded.count + Self.positionOffset >= positionCount(decoderPositions) { break }
+      // Same bound as `encode`, on the growing prefix rather than the input:
+      // a prefix of N uses position indexes up to N + 1, so N may reach
+      // `positionCount - 2`. `>=` here was one step tighter than `encode`
+      // accepts — unreachable at maxLength 50, a silent one-token truncation
+      // the moment that is raised.
+      if decoded.count + Self.positionOffset > positionCount(decoderPositions) { break }
     }
     return generated
   }

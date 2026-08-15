@@ -35,7 +35,7 @@ struct SpacyMaxoutLayer {
   /// Collapses `[T, outputs * pieces]` to `[T, outputs]` by taking the largest
   /// piece. The flattened layout is `[output][piece]`, matching the
   /// `[outputs, pieces, inputs]` weight the file stores.
-  static func maxOverPieces(_ matrix: FloatMatrix, outputs: Int, pieces: Int) -> FloatMatrix {
+  private static func maxOverPieces(_ matrix: FloatMatrix, outputs: Int, pieces: Int) -> FloatMatrix {
     precondition(matrix.columns == outputs * pieces, "maxout shape mismatch")
     var result = [Float](repeating: 0, count: matrix.rows * outputs)
     for row in 0..<matrix.rows {
