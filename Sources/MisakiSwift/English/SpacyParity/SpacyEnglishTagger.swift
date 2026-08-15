@@ -1,6 +1,4 @@
 import Foundation
-import MLX
-import MLXNN
 import NaturalLanguage
 
 public struct EnglishFrontendToken: Equatable, Sendable {
@@ -51,9 +49,28 @@ final class SpacyEnglishTagger {
     }
   }
 
+  /// One residual `maxout` + `layer_norm` pair from the tok2vec encoder.
+  private struct Block {
+    let maxout: SpacyMaxoutLayer
+    let layerNorm: LayerNormLayer
+  }
+
+  /// Rows each feature contributes per token, summed — spaCy's `HashEmbed`
+  /// hashes every attribute into four buckets.
+  private static let hashKeysPerFeature = 4
+
+  /// thinc's `LayerNorm` epsilon, which is not PyTorch's 1e-5. The BART
+  /// fallback uses the other one, so the value has to travel with the caller.
+  private static let layerNormEpsilon = 1e-8
+
   private let tokenizer: SpacyTokenizer
   private let configuration: Configuration
-  private let weights: [String: MLXArray]
+  /// `[featureIndex][row * width + column]`, in feature order.
+  private let embeddings: [[Float]]
+  private let embedProjection: SpacyMaxoutLayer
+  private let embedLayerNorm: LayerNormLayer
+  private let blocks: [Block]
+  private let tagger: LinearLayer
 
   init() throws {
     tokenizer = try SpacyTokenizer()
@@ -61,12 +78,15 @@ final class SpacyEnglishTagger {
           let weightsURL = Bundle.module.url(forResource: "spacy_tagger", withExtension: "safetensors") else {
       throw SpacyParityError.missingResource("spacy_tagger")
     }
+    let file: SafetensorsFile
     do {
       configuration = try JSONDecoder().decode(
         Configuration.self,
         from: Data(contentsOf: metadataURL)
       )
-      weights = try MLX.loadArrays(url: weightsURL)
+      file = try SafetensorsFile(contentsOf: weightsURL)
+    } catch let error as SpacyParityError {
+      throw error
     } catch {
       throw SpacyParityError.invalidResource("spacy_tagger")
     }
@@ -77,6 +97,51 @@ final class SpacyEnglishTagger {
           configuration.maxoutPieces == 3,
           configuration.features.count == 6 else {
       throw SpacyParityError.unsupportedModel(configuration.version)
+    }
+
+    func tensor(_ name: String) throws -> SafetensorsFile.Tensor {
+      guard let value = file.tensors[name] else {
+        throw SpacyParityError.invalidResource("spacy_tagger (missing weight '\(name)')")
+      }
+      return value
+    }
+
+    // Each table is `[feature.rows, width]`; a disagreement here would land as
+    // an out-of-range gather rather than a wrong answer, so check it once.
+    var tables: [[Float]] = []
+    tables.reserveCapacity(configuration.features.count)
+    for (index, feature) in configuration.features.enumerated() {
+      let table = try tensor("embed.\(index).E")
+      guard table.shape == [feature.rows, configuration.width] else {
+        throw SpacyParityError.invalidResource(
+          "spacy_tagger (embed.\(index).E is \(table.shape), expected [\(feature.rows), \(configuration.width)])"
+        )
+      }
+      tables.append(table.values)
+    }
+    embeddings = tables
+
+    embedProjection = try SpacyMaxoutLayer(
+      weight: tensor("embed_projection.W"), bias: tensor("embed_projection.b")
+    )
+    embedLayerNorm = try LayerNormLayer(
+      gain: tensor("embed_layer_norm.G"), bias: tensor("embed_layer_norm.b"),
+      epsilon: Self.layerNormEpsilon
+    )
+    blocks = try (0..<configuration.depth).map { index in
+      Block(
+        maxout: try SpacyMaxoutLayer(
+          weight: tensor("block.\(index).maxout.W"), bias: tensor("block.\(index).maxout.b")
+        ),
+        layerNorm: try LayerNormLayer(
+          gain: tensor("block.\(index).layer_norm.G"), bias: tensor("block.\(index).layer_norm.b"),
+          epsilon: Self.layerNormEpsilon
+        )
+      )
+    }
+    tagger = try LinearLayer(weight: tensor("tagger.W"), bias: tensor("tagger.b"))
+    guard tagger.bias?.count == configuration.labels.count else {
+      throw SpacyParityError.invalidResource("spacy_tagger (tagger head does not match the labels)")
     }
   }
 
@@ -94,97 +159,46 @@ final class SpacyEnglishTagger {
     }
 
     let features = tokens.map(featureValues)
-    var embedded: [MLXArray] = []
-    embedded.reserveCapacity(configuration.features.count)
+
+    // Hash embed: each of the six attributes is hashed into four buckets whose
+    // rows are summed, and the six results are joined side by side into one
+    // `features.count * width` row per token.
+    var encoded = FloatMatrix(rows: tokens.count, columns: 0, values: [])
     for featureIndex in configuration.features.indices {
       let feature = configuration.features[featureIndex]
-      var indexes: [Int32] = []
-      indexes.reserveCapacity(tokens.count * 4)
+      var indexes: [Int] = []
+      indexes.reserveCapacity(tokens.count * Self.hashKeysPerFeature)
       for row in features {
         for key in Self.hashEmbedKeys(row[featureIndex], seed: feature.seed) {
-          indexes.append(Int32(UInt64(key) % UInt64(feature.rows)))
+          indexes.append(Int(UInt64(key) % UInt64(feature.rows)))
         }
       }
-      let indexArray = MLXArray(indexes)
-      let table = Embedding(weight: requiredWeight("embed.\(featureIndex).E"))
-      let vectors = table(indexArray)
-        .reshaped([tokens.count, 4, configuration.width])
-        .sum(axis: 1)
-      embedded.append(vectors)
+      encoded = MatrixMath.horizontallyConcatenated(
+        encoded,
+        MatrixMath.summedEmbeddingRows(
+          table: embeddings[featureIndex],
+          width: configuration.width,
+          indexes: indexes,
+          keysPerRow: Self.hashKeysPerFeature
+        )
+      )
     }
 
-    var encoded = concatenated(embedded, axis: 1)
-    encoded = maxout(
-      encoded,
-      weight: requiredWeight("embed_projection.W"),
-      bias: requiredWeight("embed_projection.b")
-    )
-    encoded = layerNormalize(
-      encoded,
-      gain: requiredWeight("embed_layer_norm.G"),
-      bias: requiredWeight("embed_layer_norm.b")
-    )
+    encoded = embedLayerNorm(embedProjection(encoded))
 
+    // Residual window blocks. The padding is what lets a token near either end
+    // still see a full receptive field; it is stripped again below.
     let receptiveField = configuration.window * configuration.depth
-    let padding = MLXArray.zeros([receptiveField, configuration.width])
-    var contextual = concatenated([padding, encoded, padding], axis: 0)
-    for blockIndex in 0..<configuration.depth {
-      let expanded = expandWindow(contextual)
-      var update = maxout(
-        expanded,
-        weight: requiredWeight("block.\(blockIndex).maxout.W"),
-        bias: requiredWeight("block.\(blockIndex).maxout.b")
-      )
-      update = layerNormalize(
-        update,
-        gain: requiredWeight("block.\(blockIndex).layer_norm.G"),
-        bias: requiredWeight("block.\(blockIndex).layer_norm.b")
-      )
-      contextual = contextual + update
+    var contextual = MatrixMath.verticallyPadded(encoded, by: receptiveField)
+    for block in blocks {
+      let update = block.layerNorm(block.maxout(MatrixMath.windowExpanded(contextual)))
+      MatrixMath.add(&contextual, update)
     }
-    encoded = contextual[receptiveField..<(receptiveField + tokens.count)]
+    encoded = contextual.rowRange(receptiveField..<(receptiveField + tokens.count))
 
-    let logits = Linear(
-      weight: requiredWeight("tagger.W"),
-      bias: requiredWeight("tagger.b")
-    )(encoded)
-    let tagIndexes = logits.argMax(axis: 1).asArray(Int32.self)
-    let tags = tagIndexes.map { configuration.labels[Int($0)] }
-    let vectors = encoded.asArray(Float.self).chunked(width: configuration.width)
-    return SpacyTaggerTrace(tokens: tokens, features: features, vectors: vectors, pennTags: tags)
-  }
-
-  private func requiredWeight(_ name: String) -> MLXArray {
-    guard let weight = weights[name] else {
-      preconditionFailure("Missing spaCy tagger weight: \(name)")
-    }
-    return weight
-  }
-
-  private func maxout(_ input: MLXArray, weight: MLXArray, bias: MLXArray) -> MLXArray {
-    let outputWidth = weight.dim(0)
-    let pieces = weight.dim(1)
-    let inputWidth = weight.dim(2)
-    let flattenedWeight = weight.reshaped([outputWidth * pieces, inputWidth])
-    let flattenedBias = bias.reshaped([outputWidth * pieces])
-    return Linear(weight: flattenedWeight, bias: flattenedBias)(input)
-      .reshaped([input.dim(0), outputWidth, pieces])
-      .max(axis: 2)
-  }
-
-  private func layerNormalize(_ input: MLXArray, gain: MLXArray, bias: MLXArray) -> MLXArray {
-    let mean = input.mean(axis: 1, keepDims: true)
-    let variance = input.variance(axis: 1, keepDims: true) + 1e-8
-    return (input - mean) * variance.rsqrt() * gain + bias
-  }
-
-  private func expandWindow(_ input: MLXArray) -> MLXArray {
-    let padding = MLXArray.zeros([1, input.dim(1)])
-    let padded = concatenated([padding, input, padding], axis: 0)
-    let count = input.dim(0)
-    return concatenated(
-      [padded[0..<count], padded[1..<(count + 1)], padded[2..<(count + 2)]],
-      axis: 1
+    let tags = MatrixMath.argmaxPerRow(tagger(encoded)).map { configuration.labels[$0] }
+    return SpacyTaggerTrace(
+      tokens: tokens, features: features, vectors: encoded.rowArrays(), pennTags: tags
     )
   }
 
@@ -267,17 +281,6 @@ final class SpacyEnglishTagger {
     value = value &* 0xc4ceb9fe1a85ec53
     value ^= value >> 33
     return value
-  }
-}
-
-private extension Array {
-  func chunked(width: Int) -> [[Element]] {
-    guard width > 0 else {
-      return []
-    }
-    return stride(from: 0, to: count, by: width).map { start in
-      Array(self[start..<Swift.min(start + width, count)])
-    }
   }
 }
 
