@@ -540,10 +540,31 @@ final class Lexicon {
     guard word.count >= 5, word.hasSuffix("ing") else { return (nil, nil) }
     var stem: String?
     
-    if word.count > 5, isKnown(String(word.dropLast(3))) {
-      stem = String(word.dropLast(3))
-    } else if isKnown(String(word.dropLast(3)) + "e") {
+    // The silent-e stem is tried FIRST, which is the reverse of the order the
+    // other two stemmers use, because English orthography makes the two
+    // candidates asymmetric rather than merely alternative. A bare stem keeps
+    // its own spelling before `-ing` only when its final syllable is
+    // unstressed ("benefit" -> "benefiting"); a stressed one doubles its final
+    // consonant ("automat" -> "automatting"), and a silent `e` is itself a
+    // stress-and-tense-vowel marker, so a known `Xe` is strong evidence that
+    // `Xing` is that verb rather than `X`.
+    //
+    // Order only decides anything when BOTH stems are known, and there the
+    // bare stem was wrong: "automating" resolved through "automat" -- the
+    // vending-machine restaurant, a real gold entry -- and read
+    // "auto-MATT-ing", and "curing" resolved through "cur", the mongrel dog,
+    // and read `kˈɜɹɪŋ` instead of `kjˈʊɹɪŋ`. Where only one stem is known
+    // nothing moves, which is why the ordinary unstressed-final set
+    // ("targeting", "marketing", "focusing") is untouched: they have no `-e`
+    // counterpart to find.
+    //
+    // The doubled-consonant branch stays last. It is the spelling that already
+    // says the bare stem was meant, so it can only be reached once neither of
+    // the two single-consonant readings resolved.
+    if isKnown(String(word.dropLast(3)) + "e") {
       stem = String(word.dropLast(3)) + "e"
+    } else if word.count > 5, isKnown(String(word.dropLast(3))) {
+      stem = String(word.dropLast(3))
     } else if word.count > 5, word.range(of: #"([bcdgklmnprstvxz])\1ing$|cking$"#, options: .regularExpression) != nil, isKnown(String(word.dropLast(4))) {
       stem = String(word.dropLast(4))
     }
