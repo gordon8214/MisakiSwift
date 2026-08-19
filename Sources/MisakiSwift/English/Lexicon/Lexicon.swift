@@ -465,11 +465,20 @@ final class Lexicon {
     return (pluralizeS(looked.0), looked.1)
   }
   
+  /// The `s` / `z` / `ᵻz` choice, by voicing assimilation onto whatever
+  /// precedes it. Factored out of `pluralizeS` so the forced-phoneme path in
+  /// `EnglishG2P` can reach the same rule instead of carrying a second copy —
+  /// a clitic split off from its stem is the one place this has to be applied
+  /// from outside the stemmers.
+  func sibilantSuffix(after stem: String) -> String {
+    if let last = stem.last, "ptkfθ".contains(last) { return "s" }
+    if let last = stem.last, "szʃʒʧʤ".contains(last) { return (british ? "ɪ" : "ᵻ") + "z" }
+    return "z"
+  }
+
   private func pluralizeS(_ stem: String?) -> String? {
     guard let stem = stem, !stem.isEmpty else { return nil }
-    if let last = stem.last, "ptkfθ".contains(last) { return stem + "s" }
-    if let last = stem.last, "szʃʒʧʤ".contains(last) { return stem + (british ? "ɪ" : "ᵻ") + "z" }
-    return stem + "z"
+    return stem + sibilantSuffix(after: stem)
   }
   
   private func pastEd(_ stem: String?) -> String? {

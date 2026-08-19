@@ -646,6 +646,50 @@ final public class EnglishG2P {
     }
   }
    
+  /// Possessive clitics, which are the only ones whose phoneme is conditioned
+  /// on the sound before them. `'d` / `'ll` / `'re` / `'ve` are fixed strings
+  /// and resolve correctly standalone, so they are deliberately absent.
+  static let possessiveClitics: Set<String> = ["'s", "\u{2019}s", "\u{2018}s"]
+
+  /// Re-derives a possessive clitic that was split off from a forced-phoneme
+  /// span, through the lexicon's own voicing rule.
+  ///
+  /// A `[word](/ipa/)` span sets `phonemes` directly, and `retokenize` gives a
+  /// token that already has phonemes a group of its own — so the `'s` that
+  /// followed it is no longer in the stem's subtoken group and gets resolved
+  /// alone, as a Particle, which returns a literal `s`. Without markup the
+  /// whole of `dog's` stays one token and `stem_s` applies `pluralizeS`, which
+  /// is why only this path is wrong:
+  ///
+  ///     dog's                    dˈɔɡz     [dog](/dˈɔɡ/)'s      dˈɔɡs
+  ///     bus's                    bˈʌsᵻz    [bus](/bˈʌs/)'s      bˈʌss
+  ///     church's                 ʧˈɜɹʧᵻz   [church](/ʧˈɜɹʧ/)'s  ʧˈɜɹʧs
+  ///
+  /// A voiceless final was right by accident; a voiced one lost its voicing;
+  /// and a sibilant one produced a doubled sibilant with no epenthetic vowel,
+  /// which is the case `pluralizeS` exists for. The stem is taken from the
+  /// phonemes actually emitted rather than from the lexicon, because a forced
+  /// span has no lexicon entry to consult — that is the whole point of it.
+  ///
+  /// Runs before the `ɾ`/`ʔ` mapping so the rule sees the same alphabet
+  /// `pluralizeS` was written against.
+  ///
+  /// Scoped by `rating == 5`, which only the forced-phoneme alignment sets, so
+  /// no lexicon-resolved possessive can reach this.
+  private func revoicePossessiveAfterForcedPhonemes(_ tokens: [MToken]) {
+    guard tokens.count > 1 else { return }
+    for i in 1..<tokens.count {
+      let clitic = tokens[i]
+      guard EnglishG2P.possessiveClitics.contains(clitic.text.lowercased()) else { continue }
+      let stem = tokens[i - 1]
+      guard stem.`_`.rating == 5,
+            stem.whitespace.isEmpty,
+            let stemPhonemes = stem.phonemes,
+            !stemPhonemes.isEmpty else { continue }
+      clitic.phonemes = lexicon.sibilantSuffix(after: stemPhonemes)
+    }
+  }
+
   // Turns the text into phonemes that can then be fed to text-to-speech (TTS) engine for converting to audio
   public func phonemize(text: String, performPreprocess: Bool = true) -> (String, [MToken]) {
     // Fold line breaks to spaces before anything else.
@@ -782,6 +826,8 @@ final public class EnglishG2P {
       return item as! MToken
     }
         
+    revoicePossessiveAfterForcedPhonemes(finalTokens)
+
     for i in 0..<finalTokens.count {
       if var ps = finalTokens[i].phonemes, !ps.isEmpty {
         ps = ps.replacingOccurrences(of: "ɾ", with: "T").replacingOccurrences(of: "ʔ", with: "t")
