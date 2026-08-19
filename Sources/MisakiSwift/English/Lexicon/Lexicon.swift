@@ -495,6 +495,21 @@ final class Lexicon {
       stem = String(word.dropLast())
     } else if word.count > 4 && word.hasSuffix("ed") && !word.hasSuffix("eed"), isKnown(String(word.dropLast(2))) {
       stem = String(word.dropLast(2))
+    } else if word.count > 4 && word.hasSuffix("ied"), isKnown(String(word.dropLast(3)) + "y") {
+      // The `-ies` counterpart `stem_s` already has. Without it no branch above
+      // can reach a `-y` verb's past tense: "copied" offers only "copie" and
+      // "copi", neither a word, so the whole form fell through to the BART
+      // fallback -- which reads a SPELLING and answered `kˈOpid`, the
+      // "cope" vowel. Most `-ied` spellings the network happens to guess right,
+      // which is why this went unnoticed; "copied" is the one where a silent-e
+      // cousin ("cope", "coped") is what the spelling most resembles.
+      //
+      // Bounded by the same guard as `stem_s`: the `-y` stem must itself be
+      // known, so a word that merely ends in "ied" without being a `-y` past
+      // tense ("monied") declines here and falls through exactly as before. The
+      // `count > 4` floor keeps the one-syllable set ("died", "tied", "vied",
+      // "lied") out, where dropping three characters leaves no stem at all.
+      stem = String(word.dropLast(3)) + "y"
     }
     
     guard let s = stem else { return (nil, nil) }
