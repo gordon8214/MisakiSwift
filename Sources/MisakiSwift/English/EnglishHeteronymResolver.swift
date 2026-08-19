@@ -11,9 +11,42 @@ enum EnglishHeteronymResolver {
     "do", "does", "did", "don't", "doesn't", "didn't"
   ]
 
-  private static let liveMediaRightContexts: Set<String> = [
-    "audio", "blog", "broadcast", "coverage", "event", "feed", "music", "performance",
-    "radio", "show", "stream", "television", "tv", "video"
+  // Nouns "live" can only be modifying attributively. Unlike the fallback
+  // above this list OVERRIDES the tag, because en_core_web_sm reads a
+  // coordination such as "air pollution data from the agency and live birth
+  // records" as a second verb phrase and tags "live" VERB with no hedging —
+  // which picks the lexicon's VERB entry and says "live your life". Deferring
+  // to the tag costs nothing here: the /laɪv/ reading is right for every word
+  // in this list whatever the grammar turns out to be, since even a genuinely
+  // verbal "live blog" or "live stream" is said that way.
+  //
+  // Matched against the IMMEDIATELY adjacent token, never `nextWord`, which
+  // skips punctuation: "Long may you live. Music played." would otherwise find
+  // a right context in the following sentence and unsay the verb.
+  //
+  // Inflections are listed explicitly rather than stemmed, because the two
+  // forms are not always both safe: "rounds" is here and "round" deliberately
+  // is NOT, since "I live round the corner" is ordinary British English for
+  // "around" and the tagger reads it correctly without help. A word earns a
+  // place here only if no sentence puts it directly after the verb.
+  private static let liveAttributiveRightContexts: Set<String> = [
+    // Broadcast and performance
+    "album", "albums", "audience", "audiences", "audio", "blog", "blogs",
+    "broadcast", "broadcasts", "chat", "chats", "concert", "concerts",
+    "coverage", "demo", "demos", "event", "events", "feed", "feeds",
+    "footage", "music", "performance", "performances", "podcast", "podcasts",
+    "radio", "recording", "recordings", "session", "sessions", "show", "shows",
+    "stream", "streaming", "streams", "television", "tv", "video", "videos",
+    // Biology and medicine
+    "animal", "animals", "attenuated", "bacteria", "birth", "births", "cattle",
+    "cell", "cells", "culture", "cultures", "organism", "organisms", "poultry",
+    "specimen", "specimens", "tissue", "tissues", "vaccine", "vaccines",
+    "virus", "viruses", "yeast",
+    // Ordnance and electricity
+    "ammo", "ammunition", "fire", "grenade", "grenades", "rounds",
+    "wire", "wires",
+    // The tree
+    "oak", "oaks"
   ]
 
   // Apple's lexical tagger is inconsistent for both senses of "content": on
@@ -64,6 +97,15 @@ enum EnglishHeteronymResolver {
       let previousWord = previousWords.first
       let wordBeforePrevious = previousWords.dropFirst().first
       let nextWord = tokens.dropFirst(index + 1).compactMap(normalizedWord).first
+      // The first token that is not whitespace. spaCy folds a single trailing
+      // space into `MToken.whitespace` but emits a longer run as its own `_SP`
+      // token, and a double space between a word and its noun is not a
+      // boundary — skipping it cannot reopen the punctuation hole below,
+      // because punctuation is a token `normalizedWord` still rejects.
+      let adjacentWord = tokens
+        .dropFirst(index + 1)
+        .first { !$0.text.allSatisfy(\.isWhitespace) }
+        .flatMap(normalizedWord)
       if token.text == "A",
          pennTags[ObjectIdentifier(token)] == "DT",
          let previousWord,
@@ -78,7 +120,8 @@ enum EnglishHeteronymResolver {
         currentTag: originalTag,
         previousWord: previousWord,
         nextWord: nextWord,
-        wordBeforePrevious: wordBeforePrevious
+        wordBeforePrevious: wordBeforePrevious,
+        adjacentWord: adjacentWord
       )
       token.tag = tag
       guard tag != originalTag else {
@@ -102,7 +145,8 @@ enum EnglishHeteronymResolver {
     currentTag: NLTag?,
     previousWord: String?,
     nextWord: String?,
-    wordBeforePrevious: String? = nil
+    wordBeforePrevious: String? = nil,
+    adjacentWord: String? = nil
   ) -> NLTag? {
     switch word.lowercased() {
     case "coordinate":
@@ -119,12 +163,19 @@ enum EnglishHeteronymResolver {
       }
       return currentTag
     case "live":
+      if let adjacentWord, liveAttributiveRightContexts.contains(adjacentWord) {
+        return .adjective
+      }
       guard currentTag == nil || currentTag == .otherWord else {
         return currentTag
       }
-      if let nextWord, liveMediaRightContexts.contains(nextWord) {
-        return currentTag
-      }
+      // No `nextWord` branch here. Declining the fallback on a right context
+      // used to be this case's job, and the override above now does it
+      // strictly better: `adjacentWord` is nil exactly when the right context
+      // lies past a non-letter token, so a `nextWord` test could only ever
+      // fire ACROSS punctuation — unsaying the verb in "…where they live.
+      // Coverage of the storm continues." That is the hole the override was
+      // written to avoid, so the branch is gone rather than widened.
       if let previousWord, liveVerbLeftContexts.contains(previousWord) {
         return .verb
       }

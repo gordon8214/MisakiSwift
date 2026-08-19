@@ -76,16 +76,25 @@ struct EnglishHeteronymResolverTests {
         for: "live",
         currentTag: .otherWord,
         previousWord: context.previous,
-        nextWord: context.next
+        nextWord: context.next,
+        adjacentWord: context.next
       ) == .verb)
     }
   }
 
+  /// Both tags asserted here select the lexicon's DEFAULT entry: ADJ has no
+  /// entry of its own for "live" and falls through to it, so what this pins is
+  /// that neither context reaches the VERB entry.
+  ///
+  /// `adjacentWord` is passed exactly as `resolve` computes it. Leaving it to
+  /// its default had this asserting `.otherWord` for "the video" — a state
+  /// `resolve` cannot produce, since it would supply the right context and get
+  /// the attributive override.
   @Test func liveNonVerbContextsKeepTheDefaultReading() {
-    let contexts: [(previous: String, next: String)] = [
-      ("the", "video"),
-      ("is", "now"),
-      ("you", "broadcast")
+    let contexts: [(previous: String, next: String, expected: NLTag)] = [
+      ("the", "video", .adjective),
+      ("is", "now", .otherWord),
+      ("you", "broadcast", .adjective)
     ]
 
     for context in contexts {
@@ -93,9 +102,67 @@ struct EnglishHeteronymResolverTests {
         for: "live",
         currentTag: .otherWord,
         previousWord: context.previous,
-        nextWord: context.next
-      ) == .otherWord)
+        nextWord: context.next,
+        adjacentWord: context.next
+      ) == context.expected)
     }
+  }
+
+  /// The attributive list must never admit a word that can follow the VERB.
+  /// "I live round the corner" is ordinary British English for "around", and
+  /// "round" sat in that list until it was measured flipping six such
+  /// sentences — so this pins the SHAPE of that mistake rather than one word,
+  /// and goes red the moment anything preposition-like is added.
+  @Test func liveKeepsTheVerbReadingBeforeAPrepositionalRightContext() {
+    let rightContexts = [
+      "round", "near", "nearby", "here", "there", "in", "on", "by", "with",
+      "beside", "outside", "abroad", "alone", "together"
+    ]
+
+    for rightContext in rightContexts {
+      #expect(EnglishHeteronymResolver.resolvedTag(
+        for: "live",
+        currentTag: .verb,
+        previousWord: "they",
+        nextWord: rightContext,
+        adjacentWord: rightContext
+      ) == .verb, "\(rightContext) reached the attributive list")
+    }
+  }
+
+  /// The reported failure. en_core_web_sm reads the coordination in "…data
+  /// from the Environmental Protection Agency and live birth records" as a
+  /// second verb phrase and tags "live" VERB outright, so the fallback above —
+  /// which only fires on an unusable tag — never saw it and the lexicon's VERB
+  /// entry said "live your life". An attributive noun outranks the tag.
+  @Test func liveUsesTheAdjectiveReadingBeforeAnAttributiveNoun() {
+    let sourceTags: [NLTag?] = [nil, .otherWord, .verb, .noun, .adjective]
+
+    for sourceTag in sourceTags {
+      for rightContext in ["birth", "births", "streaming", "videos"] {
+        #expect(EnglishHeteronymResolver.resolvedTag(
+          for: "live",
+          currentTag: sourceTag,
+          previousWord: "and",
+          nextWord: rightContext,
+          adjacentWord: rightContext
+        ) == .adjective, "\(rightContext) did not override \(String(describing: sourceTag))")
+      }
+    }
+  }
+
+  /// The override reads the IMMEDIATELY adjacent token, so it cannot reach
+  /// across a sentence boundary. `nextWord` skips punctuation, which would
+  /// otherwise let "Long may you live. Music played." find a right context in
+  /// the next sentence and unsay a correctly tagged verb.
+  @Test func liveAttributiveOverrideDoesNotCrossPunctuation() {
+    #expect(EnglishHeteronymResolver.resolvedTag(
+      for: "live",
+      currentTag: .verb,
+      previousWord: "you",
+      nextWord: "music",
+      adjacentWord: nil
+    ) == .verb)
   }
 
   @Test func liveFallbackDoesNotReplaceAUsablePOSTag() {
