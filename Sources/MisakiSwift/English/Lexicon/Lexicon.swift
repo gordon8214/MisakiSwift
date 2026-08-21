@@ -42,7 +42,20 @@ final class Lexicon {
   }
 
   private static func supplementalGolds(british: Bool) -> [String: Any] {
-    ["niño": british ? "nˈiːnjQ" : "nˈinjO"]
+    let fiance = british ? "fiˈɒnsA" : "fiˈɑnsA"
+
+    return [
+      // Measured before: fiancé → US fiˈɑŋk, GB fɪˈaŋk;
+      // fiancée → US fiˈænsɪə, GB fɪˈaŋki. The silver-tier
+      // "fiancing" readings (US fiˈɑnsAɪŋ, GB fiˈɒnsAɪŋ) supply the
+      // shared base without inventing a phoneme string. After, both spellings
+      // read US fiˈɑnsA and GB fiˈɒnsA.
+      "fiancé": fiance,
+      "FIANCÉ": fiance,
+      "fiancée": fiance,
+      "FIANCÉE": fiance,
+      "niño": british ? "nˈiːnjQ" : "nˈinjO"
+    ]
   }
     
   /// Grows a dictionary by adding capitalized / lowercase variants of existing word keys
