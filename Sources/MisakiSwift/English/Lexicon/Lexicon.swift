@@ -43,6 +43,9 @@ final class Lexicon {
 
   private static func supplementalGolds(british: Bool) -> [String: Any] {
     let fiance = british ? "fiˈɒnsA" : "fiˈɑnsA"
+    let naive = british ? "nIˈiːv" : "nɑˈiv"
+    let robotaxi = british ? "ɹˌQbətˈaksi" : "ɹˌObətˈæksi"
+    let robotaxis = british ? "ɹˌQbətˈaksiːz" : "ɹˌObətˈæksiz"
 
     return [
       // Measured before: fiancé → US fiˈɑŋk, GB fɪˈaŋk;
@@ -54,6 +57,20 @@ final class Lexicon {
       "FIANCÉ": fiance,
       "fiancée": fiance,
       "FIANCÉE": fiance,
+      // Measured before: naïve → US/GB nˈAv ("nave"). The existing
+      // gold `naive` entry supplies both columns: US nɑˈiv, GB nIˈiːv.
+      // Canonical composition in `transcribe` also makes this cover decomposed
+      // diaeresis input without a second spelling-specific path.
+      "naïve": naive,
+      "NAÏVE": naive,
+      // `robotaxi` is a missing common noun, while the final `-taxis` spelling
+      // is already a large scientific family pronounced /tæksɪs/. Keep the
+      // repair exact: the singular comes from Misaki's working Title-case
+      // fallback; its plural ending comes from gold `taxis`. Measured before
+      // Robotaxis → US ɹˌObətˈæksɪs, GB ɹˌQbətˈaksɪs; after it is
+      // US ɹˌObətˈæksiz, GB ɹˌQbətˈaksiːz.
+      "robotaxi": robotaxi,
+      "robotaxis": robotaxis,
       "niño": british ? "nˈiːnjQ" : "nˈinjO"
     ]
   }
