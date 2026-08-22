@@ -830,7 +830,14 @@ final public class EnglishG2P {
 
     for i in 0..<finalTokens.count {
       if var ps = finalTokens[i].phonemes, !ps.isEmpty {
-        ps = ps.replacingOccurrences(of: "ɾ", with: "T").replacingOccurrences(of: "ʔ", with: "t")
+        // American gold uses `ʔn` for a glottal stop followed by syllabic n
+        // (button, certain, Manhattan). Kokoro has no syllabic-n symbol, so a
+        // bare `tn` can acoustically lose the final syllable. Make that vowel
+        // explicit before the remaining glottal stops take their generic map.
+        ps = ps
+          .replacingOccurrences(of: "ɾ", with: "T")
+          .replacingOccurrences(of: "ʔn", with: "tᵊn")
+          .replacingOccurrences(of: "ʔ", with: "t")
         finalTokens[i].phonemes = ps
       }
     }

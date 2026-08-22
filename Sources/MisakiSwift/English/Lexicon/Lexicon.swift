@@ -46,6 +46,9 @@ final class Lexicon {
     let naive = british ? "nIˈiːv" : "nɑˈiv"
     let robotaxi = british ? "ɹˌQbətˈaksi" : "ɹˌObətˈæksi"
     let robotaxis = british ? "ɹˌQbətˈaksiːz" : "ɹˌObətˈæksiz"
+    let uberBrand = british ? "ˈuːbə" : "ˈubəɹ"
+    let uberLowercase = british ? uberBrand : "ˈʌbəɹ"
+    let ubers = british ? "ˈuːbəz" : "ˈubəɹz"
 
     return [
       // Measured before: fiancé → US fiˈɑŋk, GB fɪˈaŋk;
@@ -71,6 +74,17 @@ final class Lexicon {
       // US ɹˌObətˈæksiz, GB ɹˌQbətˈaksiːz.
       "robotaxi": robotaxi,
       "robotaxis": robotaxis,
+      // Missing from every lexicon tier, the brand fell through by casing:
+      // Uber → US jˈubəɹ / GB jˈuːbə, while UBER spelled four letters. The
+      // lowercase American adjective already read correctly as ˈʌbəɹ, so keep
+      // that exact spelling while Title/all-caps brand forms use gold `goober`
+      // without its /g/ onset. British uses the same /uː/ stem in both roles.
+      "uber": uberLowercase,
+      "Uber": uberBrand,
+      "UBER": uberBrand,
+      "ubers": ubers,
+      "Ubers": ubers,
+      "UBERS": ubers,
       "niño": british ? "nˈiːnjQ" : "nˈinjO"
     ]
   }

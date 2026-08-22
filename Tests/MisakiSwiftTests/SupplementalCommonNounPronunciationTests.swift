@@ -10,6 +10,7 @@ struct SupplementalCommonNounPronunciationTests {
 
     for fixture in fixtures {
       let g2p = try EnglishG2P(british: fixture.british, requireRemoteFrontendParity: true)
+      #expect(g2p.phonemize(text: "naive").0 == fixture.singular)
       let forms = [
         ("naïve", fixture.singular),
         ("Naïve", fixture.singular),
@@ -47,6 +48,24 @@ struct SupplementalCommonNounPronunciationTests {
         #expect(g2p.phonemize(text: text).0 == fixture.plural)
       }
       #expect(g2p.phonemize(text: "chemotaxis").0 == fixture.scientific)
+    }
+  }
+
+  @Test func uberDistinguishesTheBrandFromTheAmericanAdjective() throws {
+    let fixtures: [(british: Bool, brand: String, adjective: String, plural: String)] = [
+      (false, "ˈubəɹ", "ˈʌbəɹ", "ˈubəɹz"),
+      (true, "ˈuːbə", "ˈuːbə", "ˈuːbəz")
+    ]
+
+    for fixture in fixtures {
+      let g2p = try EnglishG2P(british: fixture.british, requireRemoteFrontendParity: true)
+      for text in ["Uber", "UBER"] {
+        #expect(g2p.phonemize(text: text).0.contains(fixture.brand))
+      }
+      for text in ["two Ubers", "two UBERS", "two ubers"] {
+        #expect(g2p.phonemize(text: text).0.hasSuffix(fixture.plural))
+      }
+      #expect(g2p.phonemize(text: "uber").0 == fixture.adjective)
     }
   }
 }
