@@ -14,7 +14,12 @@ struct LeadPronunciationTests {
       "The pipe was made of lead.",
       "The sample contains lead.",
       "The label named the heavy metal lead.",
-      "The alloy contained copper, iron, and lead."
+      "The alloy contained copper, iron, and lead.",
+      "Tests found lead in the drinking water.",
+      "Tests found lead in soil.",
+      "The contamination came from lead from old pipes.",
+      "Workers removed lead-based paint.",
+      "Tests measured arsenic, mercury, lead."
     ]
     let otherContexts = [
       "They will lead the team.",
@@ -22,7 +27,15 @@ struct LeadPronunciationTests {
       "The lead author spoke.",
       "The sales lead called.",
       "The dog was on a lead.",
-      "Mercury spilled. And lead the team away."
+      "Mercury spilled. And lead the team away.",
+      "Heavy metals lead to poisoning.",
+      "They lead paint-removal projects.",
+      "Study arsenic and mercury, and lead the discussion.",
+      "Review mercury – and lead the discussion.",
+      "Review mercury - and lead the discussion.",
+      "Review mercury -- and lead the discussion.",
+      "She has the lead in the race.",
+      "They lead from the front."
     ]
 
     for british in [false, true] {

@@ -186,6 +186,8 @@ struct EnglishHeteronymResolverTests {
     for context in materialContexts {
       #expect(EnglishHeteronymResolver.resolvedAlias(
         for: "lead",
+        currentTag: .noun,
+        pennTag: "NN",
         previousWord: context.previous,
         wordBeforePrevious: context.beforePrevious,
         adjacentWord: context.adjacent
@@ -206,9 +208,67 @@ struct EnglishHeteronymResolverTests {
     for context in otherContexts {
       #expect(EnglishHeteronymResolver.resolvedAlias(
         for: "lead",
+        currentTag: .noun,
+        pennTag: "NN",
         previousWord: context.previous,
         wordBeforePrevious: context.beforePrevious,
         adjacentWord: context.adjacent
+      ) == nil)
+    }
+  }
+
+  @Test func leadMaterialEvidenceNeverOverridesAVerbTag() {
+    let collisions: [(previous: String?, beforePrevious: String?, adjacent: String?)] = [
+      ("metals", "heavy", "to"),
+      ("they", nil, "paint"),
+      ("and", "mercury", "the")
+    ]
+
+    for context in collisions {
+      #expect(EnglishHeteronymResolver.resolvedAlias(
+        for: "lead",
+        currentTag: .verb,
+        pennTag: "VB",
+        previousWord: context.previous,
+        wordBeforePrevious: context.beforePrevious,
+        adjacentWord: context.adjacent
+      ) == nil)
+    }
+  }
+
+  @Test func leadRecognizesBoundedMaterialPhrasesAndCommaLists() {
+    let contexts: [(previous: String?, beforePrevious: String?, following: [String], hyphenated: Bool)] = [
+      (nil, nil, ["in", "the", "drinking", "water"], false),
+      (nil, nil, ["in", "soil"], false),
+      (nil, nil, ["from", "old", "pipes"], false),
+      (nil, nil, ["based", "paint"], true),
+      ("mercury", "arsenic", [], false)
+    ]
+
+    for context in contexts {
+      #expect(EnglishHeteronymResolver.resolvedAlias(
+        for: "lead",
+        currentTag: .noun,
+        pennTag: "NN",
+        previousWord: context.previous,
+        wordBeforePrevious: context.beforePrevious,
+        adjacentWord: nil,
+        followingWords: context.following,
+        isHyphenatedToFollowingWord: context.hyphenated
+      ) == "led")
+    }
+  }
+
+  @Test func leadPrepositionalGuideContextsStayUntouched() {
+    for followingWords in [["in", "the", "race"], ["from", "the", "front"]] {
+      #expect(EnglishHeteronymResolver.resolvedAlias(
+        for: "lead",
+        currentTag: .noun,
+        pennTag: "NN",
+        previousWord: nil,
+        wordBeforePrevious: nil,
+        adjacentWord: followingWords.dropFirst().first,
+        followingWords: followingWords
       ) == nil)
     }
   }

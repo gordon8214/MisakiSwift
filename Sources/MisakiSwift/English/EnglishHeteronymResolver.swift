@@ -114,7 +114,15 @@ enum EnglishHeteronymResolver {
     "silver", "tin", "zinc"
   ]
 
-  private static let contextBoundaryCharacters: Set<Character> = Set(".!?;:—")
+  private static let leadMetalInMaterials: Set<String> = [
+    "blood", "soil", "water"
+  ]
+
+  private static let leadMetalFromSources: Set<String> = [
+    "paint", "paints", "pipe", "pipes"
+  ]
+
+  private static let contextBoundaryCharacters: Set<Character> = Set(".!?;:—–")
 
   // en_core_web_sm still labels an uppercase letter as DT in a few compact
   // noun labels (notably "Hepatitis A vaccine"). These heads are positive
@@ -127,9 +135,10 @@ enum EnglishHeteronymResolver {
 
   static func resolve(tokens: [MToken], pennTags: inout PennTagMap) {
     for (index, token) in tokens.enumerated() where token.phonemes == nil {
-      let previousWords = precedingClauseWords(tokens[..<index])
+      let previousWords = precedingClauseWords(tokens, before: index)
       let previousWord = previousWords.first
       let wordBeforePrevious = previousWords.dropFirst().first
+      let followingWords = followingClauseWords(tokens, after: index)
       let nextWord = tokens.dropFirst(index + 1).compactMap(normalizedWord).first
       // The first token that is not whitespace. spaCy folds a single trailing
       // space into `MToken.whitespace` but emits a longer run as its own `_SP`
@@ -150,9 +159,13 @@ enum EnglishHeteronymResolver {
       }
       if let alias = resolvedAlias(
         for: token.text,
+        currentTag: token.tag,
+        pennTag: pennTags[ObjectIdentifier(token)],
         previousWord: previousWord,
         wordBeforePrevious: wordBeforePrevious,
-        adjacentWord: adjacentWord
+        adjacentWord: adjacentWord,
+        followingWords: followingWords,
+        isHyphenatedToFollowingWord: isHyphenatedToFollowingWord(tokens, at: index)
       ) {
         token.`_`.alias = alias
         continue
@@ -235,14 +248,44 @@ enum EnglishHeteronymResolver {
 
   static func resolvedAlias(
     for word: String,
+    currentTag: NLTag? = nil,
+    pennTag: String? = nil,
     previousWord: String?,
     wordBeforePrevious: String?,
-    adjacentWord: String?
+    adjacentWord: String?,
+    followingWords: [String] = [],
+    isHyphenatedToFollowingWord: Bool = false
   ) -> String? {
     guard word.lowercased() == "lead" else { return nil }
 
+    let hasListEvidence: Bool
+    if let previousWord, let wordBeforePrevious {
+      hasListEvidence = ((previousWord == "and" || previousWord == "or")
+        && leadMetalListPeers.contains(wordBeforePrevious))
+        || (leadMetalListPeers.contains(previousWord)
+          && leadMetalListPeers.contains(wordBeforePrevious))
+    } else {
+      hasListEvidence = false
+    }
+    let endsMaterialList = adjacentWord == nil
+      && (followingWords.isEmpty || Array(followingWords.prefix(2)) == ["for", "example"])
+    let hasUsableVerbTag = currentTag == .verb || (pennTag?.hasPrefix("VB") ?? false)
+    guard !hasUsableVerbTag || (hasListEvidence && endsMaterialList) else { return nil }
+
     if let adjacentWord, leadMetalRightContexts.contains(adjacentWord) {
       return "led"
+    }
+    if isHyphenatedToFollowingWord, followingWords.first == "based" {
+      return "led"
+    }
+    if let preposition = followingWords.first {
+      let boundedObjects = followingWords.dropFirst().prefix(3)
+      if preposition == "in", !leadMetalInMaterials.isDisjoint(with: boundedObjects) {
+        return "led"
+      }
+      if preposition == "from", !leadMetalFromSources.isDisjoint(with: boundedObjects) {
+        return "led"
+      }
     }
     if let previousWord, leadMetalImmediateLeftContexts.contains(previousWord) {
       return "led"
@@ -256,8 +299,7 @@ enum EnglishHeteronymResolver {
       if leadMetalTwoWordLeftContexts.contains("\(wordBeforePrevious) \(previousWord)") {
         return "led"
       }
-      if (previousWord == "and" || previousWord == "or"),
-         leadMetalListPeers.contains(wordBeforePrevious) {
+      if hasListEvidence {
         return "led"
       }
     }
@@ -268,10 +310,11 @@ enum EnglishHeteronymResolver {
   /// clause boundary so `Mercury spilled. And lead the team.` cannot borrow
   /// the element from the prior sentence; commas remain transparent so the
   /// reported `mercury, and lead` enumeration still resolves.
-  private static func precedingClauseWords(_ tokens: ArraySlice<MToken>) -> [String] {
+  private static func precedingClauseWords(_ tokens: [MToken], before endIndex: Int) -> [String] {
     var words: [String] = []
-    for token in tokens.reversed() {
-      if token.text.contains(where: contextBoundaryCharacters.contains) {
+    for index in tokens.indices[..<endIndex].reversed() {
+      let token = tokens[index]
+      if isContextBoundary(tokens, at: index) {
         break
       }
       if let word = normalizedWord(token) {
@@ -280,6 +323,70 @@ enum EnglishHeteronymResolver {
       }
     }
     return words
+  }
+
+  /// Right-context material phrases need at most four words: `in the drinking
+  /// water` is the longest supported shape. The same clause boundaries as the
+  /// backward scan keep evidence from leaking across publisher punctuation.
+  private static func followingClauseWords(_ tokens: [MToken], after startIndex: Int) -> [String] {
+    var words: [String] = []
+    guard startIndex < tokens.index(before: tokens.endIndex) else { return words }
+
+    for index in tokens.index(after: startIndex)..<tokens.endIndex {
+      let token = tokens[index]
+      if isContextBoundary(tokens, at: index) {
+        break
+      }
+      if let word = normalizedWord(token) {
+        words.append(word)
+        if words.count == 4 { break }
+      }
+    }
+    return words
+  }
+
+  private static func isContextBoundary(_ tokens: [MToken], at index: Int) -> Bool {
+    let token = tokens[index]
+    if token.text.contains(where: contextBoundaryCharacters.contains) {
+      return true
+    }
+    return isSpacedASCIIDash(tokens, at: index)
+  }
+
+  private static func isSpacedASCIIDash(_ tokens: [MToken], at index: Int) -> Bool {
+    guard isASCIIDash(tokens[index]) else { return false }
+
+    var firstDash = index
+    while firstDash > tokens.startIndex {
+      let candidate = tokens.index(before: firstDash)
+      guard isASCIIDash(tokens[candidate]), tokens[candidate].whitespace.isEmpty else { break }
+      firstDash = candidate
+    }
+
+    var lastDash = index
+    while tokens[lastDash].whitespace.isEmpty,
+          lastDash < tokens.index(before: tokens.endIndex) {
+      let candidate = tokens.index(after: lastDash)
+      guard isASCIIDash(tokens[candidate]) else { break }
+      lastDash = candidate
+    }
+
+    guard firstDash > tokens.startIndex else { return false }
+    let tokenBeforeDash = tokens[tokens.index(before: firstDash)]
+    return !tokenBeforeDash.whitespace.isEmpty && !tokens[lastDash].whitespace.isEmpty
+  }
+
+  private static func isASCIIDash(_ token: MToken) -> Bool {
+    !token.text.isEmpty && token.text.allSatisfy { $0 == "-" }
+  }
+
+  private static func isHyphenatedToFollowingWord(_ tokens: [MToken], at index: Int) -> Bool {
+    guard tokens[index].whitespace.isEmpty,
+          index < tokens.index(before: tokens.endIndex) else { return false }
+    let hyphenIndex = tokens.index(after: index)
+    guard tokens[hyphenIndex].text == "-", tokens[hyphenIndex].whitespace.isEmpty,
+          hyphenIndex < tokens.index(before: tokens.endIndex) else { return false }
+    return normalizedWord(tokens[tokens.index(after: hyphenIndex)]) != nil
   }
 
   private static func normalizedWord(_ token: MToken) -> String? {
