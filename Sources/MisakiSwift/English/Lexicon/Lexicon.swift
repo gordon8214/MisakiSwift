@@ -49,6 +49,8 @@ final class Lexicon {
     let uberBrand = british ? "ˈuːbə" : "ˈubəɹ"
     let uberLowercase = british ? uberBrand : "ˈʌbəɹ"
     let ubers = british ? "ˈuːbəz" : "ˈubəɹz"
+    let donald = british ? "dˈɒnᵊld" : "dˈɑnəld"
+    let ronald = british ? "ɹˈɒnᵊld" : "ɹˈɑnəld"
 
     return [
       // Measured before: fiancé → US fiˈɑŋk, GB fɪˈaŋk;
@@ -85,6 +87,15 @@ final class Lexicon {
       "ubers": ubers,
       "Ubers": ubers,
       "UBERS": ubers,
+      // Measured before, the fallback gave the whole `-onald` name family
+      // the GOAT vowel: Donald was US dˈOnᵊld / GB dˈQnᵊld and Ronald was
+      // US ɹˈOnᵊld / GB ɹˈQnᵊld. `/usr/share/dict/words` contains exactly
+      // those two `-onald` names. Gold `McDonald` supplies the dialect-specific
+      // tail (US dˈɑnəld, GB dˈɒnᵊld); gold `Don` and `Ron` independently
+      // confirm each onset. Lowercase keys let `growDictionary` derive Title
+      // case, while the ordinary all-caps fallback reaches the same entries.
+      "donald": donald,
+      "ronald": ronald,
       "niño": british ? "nˈiːnjQ" : "nˈinjO"
     ]
   }

@@ -173,4 +173,43 @@ struct EnglishHeteronymResolverTests {
       nextWord: "in"
     ) == .adjective)
   }
+
+  @Test func leadUsesTheLedAliasOnlyWithMaterialEvidence() {
+    let materialContexts: [(previous: String?, beforePrevious: String?, adjacent: String?)] = [
+      (nil, nil, "paint"),
+      ("metal", "heavy", nil),
+      ("contains", "sample", nil),
+      ("of", "made", nil),
+      ("and", "mercury", nil)
+    ]
+
+    for context in materialContexts {
+      #expect(EnglishHeteronymResolver.resolvedAlias(
+        for: "lead",
+        previousWord: context.previous,
+        wordBeforePrevious: context.beforePrevious,
+        adjacentWord: context.adjacent
+      ) == "led")
+    }
+  }
+
+  @Test func leadKeepsItsSpellingForGuideAndLeaderSenses() {
+    let otherContexts: [(previous: String?, beforePrevious: String?, adjacent: String?)] = [
+      ("will", "they", "the"),
+      ("the", "take", nil),
+      ("the", nil, "author"),
+      ("sales", "the", nil),
+      ("a", "on", nil),
+      ("contains", "book", "stories")
+    ]
+
+    for context in otherContexts {
+      #expect(EnglishHeteronymResolver.resolvedAlias(
+        for: "lead",
+        previousWord: context.previous,
+        wordBeforePrevious: context.beforePrevious,
+        adjacentWord: context.adjacent
+      ) == nil)
+    }
+  }
 }

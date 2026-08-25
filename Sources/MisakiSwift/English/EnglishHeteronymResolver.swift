@@ -82,6 +82,40 @@ enum EnglishHeteronymResolver {
   // before borrowing the verb tag solely to select the intended phonemes.
   private static let wearAndTearLeftContext = ("wear", "and")
 
+  // Gold `lead` has only the guide/leader reading, while gold `led` is the
+  // metal vowel in both dialects. POS cannot distinguish those noun senses,
+  // so use the token alias seam for positive lexical evidence of the element.
+  // The surface token remains `lead`; only its dictionary lookup becomes
+  // `led`, which derives the dialect-safe phonemes instead of duplicating IPA.
+  private static let leadMetalRightContexts: Set<String> = [
+    "acid", "alloy", "alloys", "battery", "batteries", "bullet", "bullets",
+    "concentration", "concentrations", "contamination", "dust", "exposure",
+    "glaze", "ingot", "ingots", "level", "levels", "metal", "ore", "oxide",
+    "paint", "pipe", "pipes", "poisoning", "shot", "smelter", "smelting",
+    "solder", "toxicity"
+  ]
+
+  private static let leadMetalImmediateLeftContexts: Set<String> = [
+    "element", "elements", "metal", "metals"
+  ]
+
+  private static let leadMetalTerminalObjectLeftContexts: Set<String> = [
+    "contain", "contained", "containing", "contains", "detect", "detected",
+    "detecting", "detects"
+  ]
+
+  private static let leadMetalTwoWordLeftContexts: Set<String> = [
+    "concentration of", "exposure to", "levels of", "made from", "made of",
+    "poisoning from", "traces of"
+  ]
+
+  private static let leadMetalListPeers: Set<String> = [
+    "arsenic", "cadmium", "copper", "gold", "iron", "mercury", "nickel",
+    "silver", "tin", "zinc"
+  ]
+
+  private static let contextBoundaryCharacters: Set<Character> = Set(".!?;:—")
+
   // en_core_web_sm still labels an uppercase letter as DT in a few compact
   // noun labels (notably "Hepatitis A vaccine"). These heads are positive
   // evidence for a letter name; ordinary sentence-initial and mid-sentence
@@ -93,7 +127,7 @@ enum EnglishHeteronymResolver {
 
   static func resolve(tokens: [MToken], pennTags: inout PennTagMap) {
     for (index, token) in tokens.enumerated() where token.phonemes == nil {
-      let previousWords = tokens[..<index].reversed().compactMap(normalizedWord)
+      let previousWords = precedingClauseWords(tokens[..<index])
       let previousWord = previousWords.first
       let wordBeforePrevious = previousWords.dropFirst().first
       let nextWord = tokens.dropFirst(index + 1).compactMap(normalizedWord).first
@@ -112,6 +146,15 @@ enum EnglishHeteronymResolver {
          letterNameLeftContexts.contains(previousWord) {
         token.tag = .noun
         pennTags[ObjectIdentifier(token)] = "NN"
+        continue
+      }
+      if let alias = resolvedAlias(
+        for: token.text,
+        previousWord: previousWord,
+        wordBeforePrevious: wordBeforePrevious,
+        adjacentWord: adjacentWord
+      ) {
+        token.`_`.alias = alias
         continue
       }
       let originalTag = token.tag
@@ -188,6 +231,55 @@ enum EnglishHeteronymResolver {
     default:
       return currentTag
     }
+  }
+
+  static func resolvedAlias(
+    for word: String,
+    previousWord: String?,
+    wordBeforePrevious: String?,
+    adjacentWord: String?
+  ) -> String? {
+    guard word.lowercased() == "lead" else { return nil }
+
+    if let adjacentWord, leadMetalRightContexts.contains(adjacentWord) {
+      return "led"
+    }
+    if let previousWord, leadMetalImmediateLeftContexts.contains(previousWord) {
+      return "led"
+    }
+    if adjacentWord == nil,
+       let previousWord,
+       leadMetalTerminalObjectLeftContexts.contains(previousWord) {
+      return "led"
+    }
+    if let previousWord, let wordBeforePrevious {
+      if leadMetalTwoWordLeftContexts.contains("\(wordBeforePrevious) \(previousWord)") {
+        return "led"
+      }
+      if (previousWord == "and" || previousWord == "or"),
+         leadMetalListPeers.contains(wordBeforePrevious) {
+        return "led"
+      }
+    }
+    return nil
+  }
+
+  /// The two left-context rules never need more than two words. Stop at a
+  /// clause boundary so `Mercury spilled. And lead the team.` cannot borrow
+  /// the element from the prior sentence; commas remain transparent so the
+  /// reported `mercury, and lead` enumeration still resolves.
+  private static func precedingClauseWords(_ tokens: ArraySlice<MToken>) -> [String] {
+    var words: [String] = []
+    for token in tokens.reversed() {
+      if token.text.contains(where: contextBoundaryCharacters.contains) {
+        break
+      }
+      if let word = normalizedWord(token) {
+        words.append(word)
+        if words.count == 2 { break }
+      }
+    }
+    return words
   }
 
   private static func normalizedWord(_ token: MToken) -> String? {
