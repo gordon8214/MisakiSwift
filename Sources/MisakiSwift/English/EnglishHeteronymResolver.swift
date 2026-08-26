@@ -75,6 +75,22 @@ enum EnglishHeteronymResolver {
     "to", "can", "could", "may", "might", "must", "shall", "should", "will", "would"
   ]
 
+  // Gold carries both senses of `winds`, but the spaCy tagger sometimes calls
+  // the third-person verb a plural noun when a path-like subject moves through
+  // space. The reported long sentence tagged `river winds through` as NNS and
+  // selected wˈɪndz; shorter variants were inconsistent (`path winds across`
+  // and `stream winds toward` failed, while `road winds through` worked).
+  // Require positive evidence on BOTH sides instead of overriding every NNS:
+  // weather phrases such as `strong winds through the valley` have the same
+  // right context and must keep the DEFAULT reading.
+  private static let windingPathLeftContexts: Set<String> = [
+    "path", "river", "road", "stream", "trail"
+  ]
+
+  private static let windingMotionRightContexts: Set<String> = [
+    "across", "along", "around", "through", "toward"
+  ]
+
   // The gold lexicon stores the /tɛɹ/ reading of "tear" under VERB and
   // uses the /tɪɹ/ teardrop reading as DEFAULT. In the fixed expression
   // "wear and tear", however, "tear" is grammatically a noun, so even an
@@ -233,6 +249,14 @@ enum EnglishHeteronymResolver {
       // Coverage of the storm continues." That is the hole the override was
       // written to avoid, so the branch is gone rather than widened.
       if let previousWord, liveVerbLeftContexts.contains(previousWord) {
+        return .verb
+      }
+      return currentTag
+    case "winds":
+      if let previousWord,
+         let adjacentWord,
+         windingPathLeftContexts.contains(previousWord),
+         windingMotionRightContexts.contains(adjacentWord) {
         return .verb
       }
       return currentTag

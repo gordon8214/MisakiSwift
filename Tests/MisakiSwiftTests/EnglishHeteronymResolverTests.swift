@@ -174,6 +174,45 @@ struct EnglishHeteronymResolverTests {
     ) == .adjective)
   }
 
+  @Test func windsUsesTheVerbReadingForMeasuredWindingContexts() {
+    let contexts = [
+      (subject: "river", direction: "through"),
+      (subject: "path", direction: "across"),
+      (subject: "stream", direction: "toward"),
+      (subject: "road", direction: "around"),
+      (subject: "trail", direction: "along")
+    ]
+
+    for context in contexts {
+      #expect(EnglishHeteronymResolver.resolvedTag(
+        for: "winds",
+        currentTag: .noun,
+        previousWord: context.subject,
+        nextWord: context.direction,
+        adjacentWord: context.direction
+      ) == .verb)
+    }
+  }
+
+  @Test func windsKeepsTheWeatherReadingWithoutEvidenceOnBothSides() {
+    let contexts: [(previous: String?, adjacent: String?)] = [
+      ("strong", "through"),
+      ("the", "through"),
+      ("river", "battered"),
+      ("river", nil)
+    ]
+
+    for context in contexts {
+      #expect(EnglishHeteronymResolver.resolvedTag(
+        for: "winds",
+        currentTag: .noun,
+        previousWord: context.previous,
+        nextWord: context.adjacent,
+        adjacentWord: context.adjacent
+      ) == .noun)
+    }
+  }
+
   @Test func leadUsesTheLedAliasOnlyWithMaterialEvidence() {
     let materialContexts: [(previous: String?, beforePrevious: String?, adjacent: String?)] = [
       (nil, nil, "paint"),
