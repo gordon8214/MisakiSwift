@@ -14,6 +14,8 @@ struct WindPronunciationTests {
       ("The stream winds toward the sea.", "winds", "wˈIndz"),
       ("Strong winds through the valley battered homes.", "winds", "wˈɪndz"),
       ("The winds through the valley battered homes.", "winds", "wˈɪndz"),
+      ("Strong river winds battered homes.", "winds", "wˈɪndz"),
+      ("Near the river, winds through the gorge reached 60 mph.", "winds", "wˈɪndz"),
       ("A winding road crossed the hills.", "winding", "wˈIndɪŋ")
     ]
     let processors = [

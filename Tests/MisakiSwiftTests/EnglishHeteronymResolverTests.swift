@@ -189,17 +189,21 @@ struct EnglishHeteronymResolverTests {
         currentTag: .noun,
         previousWord: context.subject,
         nextWord: context.direction,
+        precedingAdjacentWord: context.subject,
         adjacentWord: context.direction
       ) == .verb)
     }
   }
 
   @Test func windsKeepsTheWeatherReadingWithoutEvidenceOnBothSides() {
-    let contexts: [(previous: String?, adjacent: String?)] = [
-      ("strong", "through"),
-      ("the", "through"),
-      ("river", "battered"),
-      ("river", nil)
+    let contexts: [(previous: String?, precedingAdjacent: String?, adjacent: String?)] = [
+      ("strong", "strong", "through"),
+      ("the", "the", "through"),
+      ("river", "river", "battered"),
+      ("river", "river", nil),
+      // `previousWord` can intentionally see across a comma for other rules;
+      // `winds` must require the path word immediately on its left.
+      ("river", nil, "through")
     ]
 
     for context in contexts {
@@ -208,6 +212,7 @@ struct EnglishHeteronymResolverTests {
         currentTag: .noun,
         previousWord: context.previous,
         nextWord: context.adjacent,
+        precedingAdjacentWord: context.precedingAdjacent,
         adjacentWord: context.adjacent
       ) == .noun)
     }

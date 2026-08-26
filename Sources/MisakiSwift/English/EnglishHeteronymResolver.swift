@@ -156,6 +156,14 @@ enum EnglishHeteronymResolver {
       let wordBeforePrevious = previousWords.dropFirst().first
       let followingWords = followingClauseWords(tokens, after: index)
       let nextWord = tokens.dropFirst(index + 1).compactMap(normalizedWord).first
+      // Unlike `previousWord`, this cannot cross punctuation. The winding
+      // heuristic needs evidence immediately beside `winds`; the broader scan
+      // remains intentional for lead/tear contexts such as comma-separated
+      // material lists.
+      let precedingAdjacentWord = tokens[..<index]
+        .reversed()
+        .first { !$0.text.allSatisfy(\.isWhitespace) }
+        .flatMap(normalizedWord)
       // The first token that is not whitespace. spaCy folds a single trailing
       // space into `MToken.whitespace` but emits a longer run as its own `_SP`
       // token, and a double space between a word and its noun is not a
@@ -193,6 +201,7 @@ enum EnglishHeteronymResolver {
         previousWord: previousWord,
         nextWord: nextWord,
         wordBeforePrevious: wordBeforePrevious,
+        precedingAdjacentWord: precedingAdjacentWord,
         adjacentWord: adjacentWord
       )
       token.tag = tag
@@ -218,6 +227,7 @@ enum EnglishHeteronymResolver {
     previousWord: String?,
     nextWord: String?,
     wordBeforePrevious: String? = nil,
+    precedingAdjacentWord: String? = nil,
     adjacentWord: String? = nil
   ) -> NLTag? {
     switch word.lowercased() {
@@ -253,9 +263,9 @@ enum EnglishHeteronymResolver {
       }
       return currentTag
     case "winds":
-      if let previousWord,
+      if let precedingAdjacentWord,
          let adjacentWord,
-         windingPathLeftContexts.contains(previousWord),
+         windingPathLeftContexts.contains(precedingAdjacentWord),
          windingMotionRightContexts.contains(adjacentWord) {
         return .verb
       }
