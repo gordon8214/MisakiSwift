@@ -37,6 +37,8 @@ enum EnglishHeteronymResolver {
     "footage", "music", "performance", "performances", "podcast", "podcasts",
     "radio", "recording", "recordings", "session", "sessions", "show", "shows",
     "stream", "streaming", "streams", "television", "tv", "video", "videos",
+    // Software threats
+    "malware",
     // Biology and medicine
     "animal", "animals", "attenuated", "bacteria", "birth", "births", "cattle",
     "cell", "cells", "culture", "cultures", "organism", "organisms", "poultry",

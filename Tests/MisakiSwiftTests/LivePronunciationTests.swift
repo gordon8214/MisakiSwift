@@ -19,12 +19,19 @@ struct LivePronunciationTests {
       // Plurals and participles are their own list members, not stems.
       ("The channel added live streaming of the hearing.", "lˈIv"),
       ("The clinic stocks live attenuated vaccines.", "lˈIv"),
+      // The reported sentence: `to` makes the tagger call "live" a verb even
+      // though it modifies "malware" and means active.
+      ("A few dozen companies, some of them Fortune 500s, are among those that " +
+       "executed proof-of-concept code. At least one misconfigured site is directing " +
+       "visitors, human or AI, to live malware.",
+       "lˈIv"),
       // The other bound on the list: a word that can follow the VERB must
       // stay out of it. "round" here is British for "around".
       ("They live round the corner from the school.", "lˈɪv"),
       // The attributive right context must not reach past a sentence boundary
       // and unsay a correctly tagged verb.
-      ("Long may you live. Music played on into the night.", "lˈɪv")
+      ("Long may you live. Music played on into the night.", "lˈɪv"),
+      ("They live. Malware spreads.", "lˈɪv")
     ]
     let g2p = EnglishG2P(british: false)
 

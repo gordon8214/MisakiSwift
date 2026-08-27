@@ -151,6 +151,20 @@ struct EnglishHeteronymResolverTests {
     }
   }
 
+  /// The reported sentence puts `to` immediately before "live malware", so
+  /// the tagger treats "live" as an infinitive and confidently selects VERB.
+  /// The adjacent threat noun is stronger evidence for the active /laɪv/
+  /// sense than that misleading left context.
+  @Test func liveUsesTheAdjectiveReadingBeforeMalwareAfterTo() {
+    #expect(EnglishHeteronymResolver.resolvedTag(
+      for: "live",
+      currentTag: .verb,
+      previousWord: "to",
+      nextWord: "malware",
+      adjacentWord: "malware"
+    ) == .adjective)
+  }
+
   /// The override reads the IMMEDIATELY adjacent token, so it cannot reach
   /// across a sentence boundary. `nextWord` skips punctuation, which would
   /// otherwise let "Long may you live. Music played." find a right context in
