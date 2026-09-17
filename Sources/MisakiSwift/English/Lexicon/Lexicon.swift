@@ -96,6 +96,14 @@ final class Lexicon {
       // case, while the ordinary all-caps fallback reaches the same entries.
       "donald": donald,
       "ronald": ronald,
+      // The cosponsor family lacks a base entry and its silver `cosponsoring`
+      // is US kˈɑspənsəɹɪŋ / GB kˈɒspənsəɹɪŋ. Copy the measured
+      // co-sponsor/co-sponsoring/co-sponsorship readings, including stress,
+      // into gold so the bad silver form cannot outrank the corrected stem.
+      // Other co- words retain their own lexical boundaries and readings.
+      "cosponsor": british ? "kˌQspˈɒnsə" : "kˌOspˈɑnsəɹ",
+      "cosponsoring": british ? "kˌQspˈɒnsəɹɪŋ" : "kˌOspˈɑnsəɹɪŋ",
+      "cosponsorship": british ? "kˌQspˈɒnsəʃɪp" : "kˌOspˈɑnsəɹʃˌɪp",
       "niño": british ? "nˈiːnjQ" : "nˈinjO"
     ]
   }
