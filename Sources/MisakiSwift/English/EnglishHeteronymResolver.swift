@@ -108,7 +108,8 @@ enum EnglishHeteronymResolver {
   private static let leadMetalRightContexts: Set<String> = [
     "acid", "alloy", "alloys", "battery", "batteries", "bullet", "bullets",
     "concentration", "concentrations", "contamination", "dust", "exposure",
-    "glaze", "ingot", "ingots", "level", "levels", "metal", "ore", "oxide",
+    "glaze", "ingot", "ingots", "level", "levels", "metal",
+    "nitrate", "nitrates", "ore", "oxide",
     "paint", "pipe", "pipes", "poisoning", "shot", "smelter", "smelting",
     "solder", "toxicity"
   ]
@@ -134,6 +135,12 @@ enum EnglishHeteronymResolver {
 
   private static let leadMetalInMaterials: Set<String> = [
     "blood", "soil", "water"
+  ]
+
+  // Artifacts also modify role nouns (`their lead in the ink industry`), so
+  // these right contexts require positive mass-noun evidence on the left.
+  private static let leadMetalInArtifacts: Set<String> = [
+    "ink", "inks", "papyrus", "scroll", "scrolls"
   ]
 
   private static let leadMetalFromSources: Set<String> = [
@@ -319,9 +326,29 @@ enum EnglishHeteronymResolver {
       if preposition == "in", !leadMetalInMaterials.isDisjoint(with: boundedObjects) {
         return "led"
       }
+      if preposition == "in", hasBareMaterialLeftContext(previousWord, wordBeforePrevious),
+         !leadMetalInArtifacts.isDisjoint(with: boundedObjects) {
+        return "led"
+      }
       if preposition == "from", !leadMetalFromSources.isDisjoint(with: boundedObjects) {
         return "led"
       }
+    }
+    // Mass-noun material references keep their local evidence even when the
+    // article is split into synthesis chunks. Do not carry a metal reading
+    // forward from an earlier sentence: later `lead author` must stay /li:d/.
+    if previousWord == "including", let wordBeforePrevious,
+       leadMetalImmediateLeftContexts.contains(wordBeforePrevious), adjacentWord == nil {
+      return "led"
+    }
+    if previousWord == "with", adjacentWord == "in",
+       Array(followingWords.prefix(2)) == ["in", "them"] {
+      return "led"
+    }
+    if previousWord == "for", let wordBeforePrevious,
+       ["search", "searching", "searched"].contains(wordBeforePrevious), adjacentWord == nil,
+       endsMaterialSearchObject(followingWords) {
+      return "led"
     }
     if let previousWord, leadMetalImmediateLeftContexts.contains(previousWord) {
       return "led"
@@ -340,6 +367,26 @@ enum EnglishHeteronymResolver {
       }
     }
     return nil
+  }
+
+  private static func hasBareMaterialLeftContext(_ previous: String?, _ beforePrevious: String?) -> Bool {
+    guard let previous else { return true }
+    if leadMetalTerminalObjectLeftContexts.contains(previous) || ["with", "found"].contains(previous) {
+      return true
+    }
+    return beforePrevious == "there" && ["is", "was", "'s", "’s"].contains(previous)
+  }
+
+  // A comma may separate role modifiers (`lead, rhythm, and bass guitarists`),
+  // not clauses. Accept a sentence end, another metal, or a following clause
+  // with an explicit pronominal subject, as in the article's `..., it will ...`.
+  private static func endsMaterialSearchObject(_ followingWords: [String]) -> Bool {
+    guard let next = followingWords.first else { return true }
+    if leadMetalListPeers.contains(next) { return true }
+    let subjects: Set<String> = ["he", "she", "it", "they", "we", "you", "i", "this", "that"]
+    if subjects.contains(next) { return true }
+    return ["and", "or", "but"].contains(next)
+      && followingWords.dropFirst().first.map(subjects.contains) == true
   }
 
   /// The two left-context rules never need more than two words. Stop at a
