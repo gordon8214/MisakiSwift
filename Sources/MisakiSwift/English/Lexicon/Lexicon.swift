@@ -236,14 +236,24 @@ final class Lexicon {
     if sc.phoneme != nil { return sc }
     var candidate = word
     let wl = word.lowercased()
-    
+    let nameTagKeepsCase = tag.isProperNoun && word.count <= 7
+    let clearsNameTag = nameTagKeepsCase && clearsTheAllCapsBound(word)
+
+    // A token admitted only by `clearsTheAllCapsBound` may not rest on a bare
+    // `-d` alone. `stem_ed` strips one from any known stem, which is how "SIMD"
+    // and "WASD" would read as "sim" and "was" plus /d/ -- in prose, where both
+    // are written in capitals. A regular past tense of a word is spelled -ED.
+    // The cost is a word whose only derivation is that bare -d ("COLLARD",
+    // "BACKEND"), which stays spelled, as it was before the bound existed.
     if word.count > 1,
        word.replacingOccurrences(of: "'", with: "").allSatisfy({ $0.isLetter }),
        word != word.lowercased(),
-       (!tag.isProperNoun || word.count > 7),
+       (!nameTagKeepsCase || clearsNameTag),
        golds[word] == nil, silvers[word] == nil,
        (word == word.uppercased() || word.dropFirst().lowercased() == word.dropFirst()),
-        (golds[wl] != nil || silvers[wl] != nil || [stem_s, stem_ed, stem_ing].contains(where: { fn in fn(wl, tag, stress, ctx).0 != nil })) {
+       (golds[wl] != nil || silvers[wl] != nil
+         || [stem_s, stem_ing].contains(where: { fn in fn(wl, tag, stress, ctx).0 != nil })
+         || ((!clearsNameTag || wl.hasSuffix("ed")) && stem_ed(wl, tag: tag, stress: stress, ctx: ctx).0 != nil)) {
       candidate = wl
     }
     
@@ -267,6 +277,57 @@ final class Lexicon {
     return (nil, nil)
   }
   
+  /// Whether an all-caps token is no longer kept off `getWord`'s lowercase
+  /// path by an NNP tag: four letters or more, counted before any apostrophe,
+  /// or a contraction. The lowercase path still needs a lowercase reading to
+  /// go to, exactly as for any other tag.
+  ///
+  /// spaCy's tagger is case-sensitive, and in all-caps text it tags nearly
+  /// every token NNP ("HE RACED HOME" is PRP NNP NNP). Upstream lets an NNP
+  /// reach the lowercase path only past seven letters. A shorter one stays
+  /// capitalized, `isKnown` accepts any all-caps letter run, and `lookup`
+  /// lowercases it with `isNNP` set. That skips silver, never reaches the
+  /// stemmers, and spells a gold word that carries no primary stress. So
+  /// "RACED" (silver) read R-A-C-E-D, and so did "DETAILS" (derived from
+  /// "detail"), "SHOULD" (gold `ʃˌʊd`) and "YOU'RE" (gold `jʊɹ`).
+  ///
+  /// Three letters is where acronyms collide with the lexicon: "UPS", "IOS"
+  /// and "SOS" derive from "up", "io" and "so", "WHO" is gold `who`, and
+  /// silver lists "adp", "dod" and "ing". A three-letter token is therefore
+  /// still the tagger's call. Counting before the apostrophe gives a
+  /// possessive the same answer as its base: "NASA'S" reads as NASA plus
+  /// the clitic, and "ADP'S" stays with "ADP". Every other clitic proves a
+  /// contraction, which no acronym takes, so "HE'D" and "YOU'RE" are
+  /// admitted whatever their length. `'S` is left to the base because it is
+  /// the possessive an acronym takes. It proves a contraction only where
+  /// gold lists the whole form ("it's", "he's", "she's", "who's", "let's").
+  /// That matters because curly "IT’S" reaches here as one token, unlike
+  /// straight "IT'S", which the tokenizer splits.
+  ///
+  /// Measured over 9,208 article sentences uppercased whole: of 9,594
+  /// American tokens spelled letter by letter, 4,817 now read as the word
+  /// does in its original casing (2,792 plain words, 2,025 contractions and
+  /// possessives), and no token that read correctly moved. The same sentences
+  /// in their original casing are byte-identical, and so are the readings of
+  /// the 2,073 tokens they already wrote in capitals. Known residual: a
+  /// four-letter acronym the lexicon itself lists as a word. Silver has
+  /// "cpus" and "leds". Prose writes those "CPUs" and "LEDs", which is not
+  /// all caps, so only all-caps text reaches them.
+  func clearsTheAllCapsBound(_ word: String) -> Bool {
+    guard word == word.uppercased() else { return false }
+    let pieces = word.split(separator: "'", maxSplits: 1, omittingEmptySubsequences: false)
+    if pieces.count == 2 {
+      let clitic = String(pieces[1])
+      if Lexicon.contractionClitics.contains(clitic) { return true }
+      if clitic == "S", golds[word.lowercased()] != nil { return true }
+    }
+    return pieces[0].filter(\.isLetter).count >= 4
+  }
+
+  /// The upper-cased text after a contraction's apostrophe: 'D, 'LL, 'M,
+  /// 'RE, 'VE, and N'T's T. `'S` is deliberately absent.
+  private static let contractionClitics: Set<String> = ["D", "LL", "M", "RE", "T", "VE"]
+
   private func getSpecialCase(
     _ word: String,
     tag: EnglishPOSTag,
