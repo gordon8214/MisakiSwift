@@ -294,20 +294,21 @@ final class Lexicon {
   /// "RACED" (silver) read R-A-C-E-D, and so did "DETAILS" (derived from
   /// "detail"), "SHOULD" (gold `ʃˌʊd`) and "YOU'RE" (gold `jʊɹ`).
   ///
-  /// Three letters is where acronyms collide with the lexicon: "UPS", "IOS"
-  /// and "SOS" derive from "up", "io" and "so", "WHO" is gold `who`, and
-  /// silver lists "adp", "dod" and "ing". A three-letter token is therefore
-  /// still the tagger's call. Counting before the apostrophe gives a
-  /// possessive the same answer as its base: "NASA'S" reads as NASA plus
-  /// the clitic, and "ADP'S" stays with "ADP". Every other clitic proves a
-  /// contraction, which no acronym takes, so "HE'D" and "YOU'RE" are
-  /// admitted whatever their length. `'S` is left to the base because it is
-  /// the possessive an acronym takes. It proves a contraction only where
-  /// gold lists the whole form ("it's", "he's", "she's", "who's", "let's").
-  /// That matters because curly "IT’S" reaches here as one token, unlike
-  /// straight "IT'S", which the tokenizer splits. The clitic is the text
-  /// after the LAST apostrophe, so a double contraction ("HE'D'VE") proves
-  /// one too.
+  /// Three letters is where acronyms collide with the lexicon: "UPS", "IOS" and
+  /// "SOS" derive from "up", "io" and "so", "WHO" is gold `who`, and silver
+  /// lists "adp", "dod" and "ing". A three-letter token is therefore still the
+  /// tagger's call -- which, inside a run of capitals, is made from the same
+  /// text in lower case (`EnglishG2P.allCapsRunTags`), since the tagger calls
+  /// almost everything in capitals NNP. Counting before the apostrophe gives a
+  /// possessive the same answer as its base: "NASA'S" reads as NASA plus the
+  /// clitic, and "ADP'S" stays with "ADP". Every other clitic proves a
+  /// contraction, which no acronym takes, so "HE'D" and "YOU'RE" are admitted
+  /// whatever their length. `'S` is left to the base because it is the
+  /// possessive an acronym takes. It proves a contraction only where gold lists
+  /// the whole form ("it's", "he's", "she's", "who's", "let's"). That matters
+  /// because curly "IT’S" reaches here as one token, unlike straight "IT'S",
+  /// which the tokenizer splits. The clitic is the text after the LAST
+  /// apostrophe, so a double contraction ("HE'D'VE") proves one too.
   ///
   /// Measured over 9,208 article sentences uppercased whole: of 9,594
   /// American tokens spelled letter by letter, 4,817 now read as the word
@@ -326,6 +327,56 @@ final class Lexicon {
       if clitic == "S", golds[word.lowercased()] != nil { return true }
     }
     return word.prefix { $0 != "'" }.filter(\.isLetter).count >= 4
+  }
+
+  /// Whether `token` is an all-caps word of four letters or more that the
+  /// lexicon lists in lower case and not in capitals: "STOCKS", "LINEAR",
+  /// but not "NASA" (a gold key of its own) or "GPUS". One is what shows that
+  /// a run of capitals is text set in capitals rather than a row of
+  /// initialisms.
+  func listsAsLowercaseWord(_ token: String) -> Bool {
+    guard token.count >= 4, token.allSatisfy(\.isLetter), token == token.uppercased(),
+          golds[token] == nil else { return false }
+    return listsWord(token.lowercased())
+  }
+
+  /// Whether gold or silver has an entry for `word` itself, rather than
+  /// reaching it only through a stemmer.
+  func listsWord(_ word: String) -> Bool {
+    golds[word] != nil || silvers[word] != nil
+  }
+
+  /// Whether gold lists `token`'s capitals with a reading of their own that
+  /// the lower-case word does not share: "AI" beside British "ai" (the
+  /// sloth), "DOS" beside "dos", "GNU" beside "gnu". Not "NASA" or "POP",
+  /// which read as their lower case does.
+  func listsCapitalsApart(_ token: String) -> Bool {
+    guard let capitals = golds[token] as? String else { return false }
+    let lower = token.lowercased()
+    guard let word = golds[lower] ?? silvers[lower] else { return false }
+    return (word as? String) != capitals
+  }
+
+  /// Whether gold records `token` as an initialism as well as a word: an
+  /// ALL-CAPS key that reads as a word unless tagged a noun ("US", "IT",
+  /// "OS", "ID", "SAT"). A noun tag spells it.
+  func isInitialismEntry(_ token: String) -> Bool {
+    guard let senses = golds[token] as? [String: String?], let noun = senses["NOUN"] else { return false }
+    return noun == nil
+  }
+
+  /// Whether gold keys `token`'s reading on its part of speech: a heteronym
+  /// such as "use", "close" or "live", whose tag chooses between two words,
+  /// or an initialism entry (`isInitialismEntry`), whose tag chooses between
+  /// the word and its letters. A spelling gold lists in capitals as a plain
+  /// string reads that string whatever its tag.
+  func readsByPartOfSpeech(_ token: String) -> Bool {
+    for key in [token, token.lowercased()] {
+      guard let entry = golds[key] else { continue }
+      guard let senses = entry as? [String: String?] else { return false }
+      return senses.keys.contains { $0 != "DEFAULT" && $0 != "None" }
+    }
+    return false
   }
 
   /// The upper-cased text after a contraction's apostrophe: 'D, 'LL, 'M,

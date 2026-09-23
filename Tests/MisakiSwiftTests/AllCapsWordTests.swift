@@ -77,13 +77,15 @@ struct AllCapsWordTests {
   /// acronym takes one. `'S` does only where gold lists the whole form, since
   /// it is the possessive too. Before: "YOU'RE" `wˌIˌOjˌuˌɑɹˈi`, "HE'D"
   /// `ˌAʧˌidˈi`, "SHE'S" `ˌɛsˌAʧˌiˈɛs`, and curly "IT’S" `ˌItˌiˈɛs` -- the
-  /// most frequent spelled token in the measured corpus, 698 times.
+  /// most frequent spelled token in the measured corpus, 698 times. "GO" was
+  /// still spelled here (`ʤˌiˈO`) until an all-caps run was re-tagged from
+  /// lower case; see `AllCapsRunTests`.
   @Test func aContractionReadsAsItsWord() {
     let fixtures: [(text: String, american: String, british: String)] = [
       ("YOU'RE FIRED", "jˈʊɹ fˈIəɹd", "jˈɔː fˈIəd"),
       ("TRUMP SAYS HE'D SIGN", "tɹˈʌmp sˈɛz hˈid sˈIn", "tɹˈʌmp sˈɛz hˈiːd sˈIn"),
       ("SHE'S HERE", "ʃˈiz hˈɪɹ", "ʃˈiːz hˈɪə"),
-      ("IT\u{2019}S TIME TO GO", "ˈɪts tˈIm tə ʤˌiˈO", "ˈɪts tˈIm tə ʤˌiːˈQ")
+      ("IT\u{2019}S TIME TO GO", "ˈɪts tˈIm tə ɡˈO", "ˈɪts tˈIm tə ɡˈQ")
     ]
     let american = EnglishG2P(british: false)
     let british = EnglishG2P(british: true)

@@ -18,6 +18,9 @@ struct SpacyTaggerTrace {
   let features: [[UInt64]]
   let vectors: [[Float]]
   let pennTags: [String]
+  /// The softmax probability of each token's tag. spaCy reports only the
+  /// argmax; this is how sure the model was of it.
+  let confidences: [Float]
 }
 
 final class SpacyEnglishTagger {
@@ -196,7 +199,7 @@ final class SpacyEnglishTagger {
   func trace(_ text: String) -> SpacyTaggerTrace {
     let tokens = tokenizer.tokenize(text)
     guard !tokens.isEmpty else {
-      return SpacyTaggerTrace(tokens: [], features: [], vectors: [], pennTags: [])
+      return SpacyTaggerTrace(tokens: [], features: [], vectors: [], pennTags: [], confidences: [])
     }
 
     let features = tokens.map(featureValues)
@@ -237,10 +240,28 @@ final class SpacyEnglishTagger {
     }
     encoded = contextual.rowRange(receptiveField..<(receptiveField + tokens.count))
 
-    let tags = MatrixMath.argmaxPerRow(tagger(encoded)).map { configuration.labels[$0] }
+    let scores = tagger(encoded)
+    let best = MatrixMath.argmaxPerRow(scores)
     return SpacyTaggerTrace(
-      tokens: tokens, features: features, vectors: encoded.rowArrays(), pennTags: tags
+      tokens: tokens,
+      features: features,
+      vectors: encoded.rowArrays(),
+      pennTags: best.map { configuration.labels[$0] },
+      confidences: Self.softmaxProbabilities(of: best, in: scores)
     )
+  }
+
+  /// The softmax probability of column `best[row]` in each row of `scores`.
+  private static func softmaxProbabilities(of best: [Int], in scores: FloatMatrix) -> [Float] {
+    best.enumerated().map { row, column in
+      let start = row * scores.columns
+      let top = scores.values[start + column]
+      var sum: Float = 0
+      for index in start..<(start + scores.columns) {
+        sum += exp(scores.values[index] - top)
+      }
+      return 1 / sum
+    }
   }
 
   private func featureValues(_ token: SpacyTokenizedWord) -> [UInt64] {

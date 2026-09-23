@@ -8,7 +8,7 @@ final public class EnglishG2P {
   private let nameTypeTagger: NLTagger
   private let lexicalClassTagger: NLTagger
   private let spacyTagger: SpacyEnglishTagger?
-  private let lexicon: Lexicon
+  let lexicon: Lexicon
   private let fallback: EnglishFallbackNetwork
   private let unk: String
     
@@ -279,7 +279,8 @@ final public class EnglishG2P {
 
     if let spacyTagger {
       let trace = spacyTagger.trace(preprocessedText.text)
-      for (word, pennTag) in zip(trace.tokens, trace.pennTags) {
+      let tags = allCapsRunTags(for: trace, in: preprocessedText.text, tagger: spacyTagger)
+      for (word, pennTag) in zip(trace.tokens, tags) {
         let token = MToken(
           text: word.text,
           tokenRange: word.range,
