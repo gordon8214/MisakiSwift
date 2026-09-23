@@ -32,7 +32,9 @@ struct ContractionClitics {
   let syllabicAre: String?
   /// `'ll` where the lexicon lists the clitic itself (American `əl`). It is
   /// used verbatim so that every reading the grouped word already produced
-  /// stays byte-identical.
+  /// stays byte-identical. The one exception, a schwa-final host, never
+  /// reached the grouped word: spaCy splits no such host ("Sarah'll" is one
+  /// token), so the fallback read those.
   let listedWill: String?
   /// `'ll` after a vowel where no clitic is listed, from `he'll` over `he`.
   let fusedWill: String?
@@ -53,7 +55,8 @@ struct ContractionClitics {
   /// `therein` and `thereof`), American nothing, since its host keeps its `ɹ`.
   let linking: String?
   /// Hosts the lexicon lists a negative contraction for (`mayn't`,
-  /// `mightn't`, …), which are exactly the auxiliaries. A modal keeps `'ve`
+  /// `mightn't`, …): the auxiliaries, plus the truncated stems of `can't`,
+  /// `won't`, `shan't` and `ain't`, which no `'ve` follows. A modal keeps `'ve`
   /// syllabic whatever its final sound: gold `could've`, `might've` and
   /// British `may've` are all `əv`, while every pronoun's is fused (`I've`,
   /// `we've`, `they've`, `you've`).
@@ -148,18 +151,32 @@ struct ContractionClitics {
       return nil
     }
     guard let suffix, let opening = suffix.first else { return nil }
-    // A schwa-final host supplies the clitic's schwa: "NASA'll" is `nˈæsəl`.
-    // The lexicon writes two schwas in a row only across a hyphen
-    // (`kala-azar`, `meta-analysis`), and a clitic is not a second word.
-    if final == "ə", opening == "ə" { return phonemes + suffix.dropFirst() }
-    // A listed clitic is appended exactly as the grouped word appended it, so
-    // every contraction that already read correctly reads byte-identically.
-    guard !listed, Lexicon.vowelSet.contains(opening) else { return phonemes + suffix }
-    if rhotic, endsInVowel {
+    let vowelInitial = Lexicon.vowelSet.contains(opening)
+    // Checked before the schwa merge below, which would otherwise swallow
+    // British `'re` (a lone `ə`) after "here" (`hˈɪə`) and drop the word.
+    if !listed, vowelInitial, rhotic, endsInVowel {
       guard let linking else { return nil }
       return phonemes + linking + suffix
     }
+    // A schwa-final host supplies the clitic's schwa: "NASA'll" is `nˈæsəl`.
+    // The lexicon writes two schwas in a row only across a hyphen
+    // (`kala-azar`, `meta-analysis`), and a clitic is not a second word. A
+    // clitic that is nothing but the schwa keeps it, or it would vanish.
+    if final == "ə", opening == "ə", suffix.count > 1 { return phonemes + suffix.dropFirst() }
+    // A listed clitic is appended exactly as the grouped word appended it, so
+    // every contraction that already read correctly reads byte-identically.
+    guard !listed, vowelInitial else { return phonemes + suffix }
     return Self.flapped(phonemes, british: british) + suffix
+  }
+
+  /// Whether `clitic` is read from the lexicon's own listing rather than
+  /// derived, which decides the context its host is read in.
+  func isListed(_ clitic: String) -> Bool {
+    switch clitic {
+    case "ll": listedWill != nil
+    case "d": listedWould != nil
+    default: false
+    }
   }
 
   /// The American flap before a vowel-initial clitic, by the same rule

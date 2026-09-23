@@ -121,9 +121,9 @@ struct ContractionCliticTests {
   }
 
   /// A schwa-final host supplies the clitic's schwa. The lexicon writes two
-  /// schwas in a row only across a
-  /// hyphen (`kala-azar`), and a clitic is no second word. "NASA'll" was the
-  /// fallback's `nˈAsᵊl` in mixed case and spelled in all caps.
+  /// schwas in a row only across a hyphen (`kala-azar`), and a clitic is no
+  /// second word. "NASA'll" was the fallback's `nˈAsᵊl` in mixed case and
+  /// spelled in all caps.
   @Test func aSchwaFinalHostSuppliesTheClitic() {
     Self.expectReadings([
       ("NASA'll launch it.", "nˈæsəl lˈɔnʧ ɪt.", "nˈasəl lˈɔːnʧ ɪt."),
@@ -131,10 +131,40 @@ struct ContractionCliticTests {
     ])
   }
 
+  /// British `'re` is a lone schwa, and it must never be the one merged away.
+  /// After an r-spelled host the linking r comes first ("here're" is
+  /// `hˈɪəɹə`, as "there're" is `ðˌɛːɹə`); a first version of this patch
+  /// merged it into "here"'s own schwa and dropped the word (`hˈɪə`). After a
+  /// schwa-final host with no r to link, the doubled schwa is kept rather than
+  /// lose the clitic: "NASA're" is `nˈasəə`. The lexicon writes no intrusive
+  /// r, so there is no reading to derive a better one from. Pinned, not
+  /// endorsed.
+  @Test func aBritishReIsNeverMergedAway() {
+    Self.expectReadings([
+      ("Here're the results.", "hˈɪɹəɹ ðə ɹəzˈʌlts.", "hˈɪəɹə ðə ɹɪzˈʌlts."),
+      ("There're the results.", "ðˌɛɹəɹ ðə ɹəzˈʌlts.", "ðˌɛːɹə ðə ɹɪzˈʌlts."),
+      ("NASA're ready.", "nˈæsəɹ ɹˈɛdi.", "nˈasəə ɹˈɛdi.")
+    ])
+  }
+
+  /// Before a pause a host takes its pre-pause variant, as the whole gold form
+  /// does: phrase-final "could've" is gold `kˈʊdəv`, so "would've" in the same
+  /// place is `wˈʊdəv`, not an unstressed `wʊdəv`. Mid-phrase both stay
+  /// unstressed (`mixedCaseContractionsReadAsHostAndClitic`).
+  @Test func aHostBeforeAPauseTakesItsPrePauseVariant() {
+    Self.expectReadings([
+      ("I'd go further than I would've.", "ˌId ɡˌO fˈɜɹðəɹ ðən ˌI wˈʊdəv.", "ˌId ɡˌQ fˈɜːðə ðən ˌI wˈʊdəv."),
+      ("I'd go further than I could've.", "ˌId ɡˌO fˈɜɹðəɹ ðən ˌI kˈʊdəv.", "ˌId ɡˌQ fˈɜːðə ðən ˌI kˈʊdəv.")
+    ])
+  }
+
   /// Apostrophes that are not these clitics are untouched, and an acronym in
   /// a plural possessive keeps its letters: the trailing-apostrophe path only
   /// stops the merged form being spelled, and the base is then read by the
   /// rules it always had (three letters stays the tagger's call).
+  ///
+  /// American "rock'n'roll" drops the vowel of "roll" (`ɹˌɑkᵊnɹl`). That is
+  /// its reading at `ac479cf` too, pinned here only to prove it did not move.
   @Test func otherApostrophesAreUntouched() {
     Self.expectReadings([
       ("O'Brien said so.", "ˈObɹiən sˈɛd sˌO.", "ˈQbɹɪɛn sˈɛd sˌQ."),
@@ -191,11 +221,11 @@ struct ContractionCliticTests {
   /// The split: `n't` whole, otherwise the text after the last apostrophe, so
   /// a double contraction rests on its first. `'s` belongs to `stem_s`, and
   /// nothing without a letter before the apostrophe is a host.
-  @Test func theSplit() {
-    #expect(ContractionClitics.split("should've")! == ("should", "ve"))
-    #expect(ContractionClitics.split("HE'D'VE")! == ("HE'D", "ve"))
-    #expect(ContractionClitics.split("daren't")! == ("dare", "n't"))
-    #expect(ContractionClitics.split("wouldn't've")! == ("wouldn't", "ve"))
+  @Test func theSplit() throws {
+    #expect(try #require(ContractionClitics.split("should've")) == ("should", "ve"))
+    #expect(try #require(ContractionClitics.split("HE'D'VE")) == ("HE'D", "ve"))
+    #expect(try #require(ContractionClitics.split("daren't")) == ("dare", "n't"))
+    #expect(try #require(ContractionClitics.split("wouldn't've")) == ("wouldn't", "ve"))
     #expect(ContractionClitics.split("dog's") == nil)
     #expect(ContractionClitics.split("'ve") == nil)
     #expect(ContractionClitics.split("O'Brien") == nil)

@@ -717,10 +717,21 @@ final class Lexicon {
   /// It runs on the grouped word before the grouped-word loop tries the clitic
   /// alone, which is what keeps "'re" off the gold word "re", and it is what an
   /// all-caps contraction reaches at all, since spaCy leaves "SHOULD'VE" one
-  /// token. The host is read in full, so "he'd've" rests on gold "he'd". It is
-  /// read as the grouped-word loop reads it, after the clitic: a following
-  /// sound rather than a pause, so a host with a pre-pause variant ("would",
-  /// "there") keeps the one it always had.
+  /// token. The host is read in full, so "he'd've" rests on gold "he'd".
+  ///
+  /// Before a listed clitic the host is read as the grouped-word loop read
+  /// it, after the clitic: a following sound, never a pause, so "there'll"
+  /// keeps the reading it always had. A derived clitic had no earlier reading
+  /// to keep, and there a host before a pause takes its pre-pause variant, as
+  /// the whole gold form does: "than I could've." is `kˈʊdəv`, and "than I
+  /// would've." is now `wˈʊdəv` rather than an unstressed `wʊdəv`.
+  ///
+  /// Known residuals, both in all caps only. A host gold lists only in
+  /// capitals ("FEMA", "HIPAA") is read from its lowercase and misses, so
+  /// "FEMA'LL" is still spelled. And a clitic proves a word to
+  /// `clearsTheAllCapsBound` whatever its host, so a three-letter acronym
+  /// whose lowercase is a word ("UPS'LL") reads as that word plus the clitic,
+  /// where it used to be spelled with the clitic's letters.
   private func stem_contraction(
     _ word: String,
     tag: EnglishPOSTag,
@@ -728,7 +739,9 @@ final class Lexicon {
     ctx: TokenContext?
   ) -> (phoneme: String?, rating: Int?) {
     guard let (host, clitic) = ContractionClitics.split(word) else { return (nil, nil) }
-    let hostReading = getWord(host, tag: tag, stress: stress, ctx: TokenContext(futureVowel: false))
+    let beforePause = ctx?.futureVowel == nil && !contractions.isListed(clitic)
+    let hostContext = TokenContext(futureVowel: beforePause ? nil : false)
+    let hostReading = getWord(host, tag: tag, stress: stress, ctx: hostContext)
     guard let phonemes = hostReading.phoneme,
           let whole = contractions.reading(of: clitic, afterHost: host, phonemes: phonemes, british: british) else {
       return (nil, nil)
