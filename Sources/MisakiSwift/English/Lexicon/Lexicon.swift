@@ -28,6 +28,7 @@ final class Lexicon {
   private let golds: [String: Any]
   private let silvers: [String: Any]
   private let vocab: Set<Character>
+  let contractions: ContractionClitics
 
   init(british: Bool) {
     self.british = british
@@ -37,6 +38,7 @@ final class Lexicon {
     let rawSilvers = DataResourcesUtil.loadSilver(british: british)
     self.golds = Lexicon.growDictionary(rawGolds)
     self.silvers = Lexicon.growDictionary(rawSilvers)
+    self.contractions = ContractionClitics(golds: self.golds)
   
     self.vocab = british ? Lexicon.gbVocab : Lexicon.usVocab
   }
@@ -252,8 +254,9 @@ final class Lexicon {
        golds[word] == nil, silvers[word] == nil,
        (word == word.uppercased() || word.dropFirst().lowercased() == word.dropFirst()),
        (golds[wl] != nil || silvers[wl] != nil
-         || [stem_s, stem_ing].contains(where: { fn in fn(wl, tag, stress, ctx).0 != nil })
-         || ((!clearsNameTag || wl.hasSuffix("ed")) && stem_ed(wl, tag: tag, stress: stress, ctx: ctx).0 != nil)) {
+         || [stem_s, stem_ing, stem_contraction].contains(where: { fn in fn(wl, tag, stress, ctx).0 != nil })
+         || ((!clearsNameTag || wl.hasSuffix("ed")) && stem_ed(wl, tag: tag, stress: stress, ctx: ctx).0 != nil)
+         || (wl.hasSuffix("'") && getWord(String(wl.dropLast()), tag: tag, stress: stress, ctx: ctx).phoneme != nil)) {
       candidate = wl
     }
     
@@ -273,8 +276,8 @@ final class Lexicon {
     
     let ing = stem_ing(candidate, tag: tag, stress: (stress == nil ? 0.5 : stress), ctx: ctx)
     if ing.phoneme != nil { return ing }
-    
-    return (nil, nil)
+
+    return stem_contraction(candidate, tag: tag, stress: stress, ctx: ctx)
   }
   
   /// Whether an all-caps token is no longer kept off `getWord`'s lowercase
@@ -302,7 +305,9 @@ final class Lexicon {
   /// the possessive an acronym takes. It proves a contraction only where
   /// gold lists the whole form ("it's", "he's", "she's", "who's", "let's").
   /// That matters because curly "IT’S" reaches here as one token, unlike
-  /// straight "IT'S", which the tokenizer splits.
+  /// straight "IT'S", which the tokenizer splits. The clitic is the text
+  /// after the LAST apostrophe, so a double contraction ("HE'D'VE") proves
+  /// one too.
   ///
   /// Measured over 9,208 article sentences uppercased whole: of 9,594
   /// American tokens spelled letter by letter, 4,817 now read as the word
@@ -315,13 +320,12 @@ final class Lexicon {
   /// all caps, so only all-caps text reaches them.
   func clearsTheAllCapsBound(_ word: String) -> Bool {
     guard word == word.uppercased() else { return false }
-    let pieces = word.split(separator: "'", maxSplits: 1, omittingEmptySubsequences: false)
-    if pieces.count == 2 {
-      let clitic = String(pieces[1])
+    if let apostrophe = word.lastIndex(of: "'") {
+      let clitic = String(word[word.index(after: apostrophe)...])
       if Lexicon.contractionClitics.contains(clitic) { return true }
       if clitic == "S", golds[word.lowercased()] != nil { return true }
     }
-    return pieces[0].filter(\.isLetter).count >= 4
+    return word.prefix { $0 != "'" }.filter(\.isLetter).count >= 4
   }
 
   /// The upper-cased text after a contraction's apostrophe: 'D, 'LL, 'M,
@@ -706,7 +710,32 @@ final class Lexicon {
     let looked = lookup(s, tag: tag, stress: stress, ctx: ctx)
     return (progIng(looked.phoneme), looked.rating)
   }
-  
+
+  /// A contraction the lexicon does not list whole, read as its host followed
+  /// by the clitic `ContractionClitics` derives for that host's final sound.
+  ///
+  /// It runs on the grouped word before the grouped-word loop tries the clitic
+  /// alone, which is what keeps "'re" off the gold word "re", and it is what an
+  /// all-caps contraction reaches at all, since spaCy leaves "SHOULD'VE" one
+  /// token. The host is read in full, so "he'd've" rests on gold "he'd". It is
+  /// read as the grouped-word loop reads it, after the clitic: a following
+  /// sound rather than a pause, so a host with a pre-pause variant ("would",
+  /// "there") keeps the one it always had.
+  private func stem_contraction(
+    _ word: String,
+    tag: EnglishPOSTag,
+    stress: Double?,
+    ctx: TokenContext?
+  ) -> (phoneme: String?, rating: Int?) {
+    guard let (host, clitic) = ContractionClitics.split(word) else { return (nil, nil) }
+    let hostReading = getWord(host, tag: tag, stress: stress, ctx: TokenContext(futureVowel: false))
+    guard let phonemes = hostReading.phoneme,
+          let whole = contractions.reading(of: clitic, afterHost: host, phonemes: phonemes, british: british) else {
+      return (nil, nil)
+    }
+    return (whole, hostReading.rating)
+  }
+
   private func isCurrency(_ word: String) -> Bool {
     if !word.contains(".") { return true }
     if word.filter({ $0 == "." }).count > 1 { return false }

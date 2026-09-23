@@ -646,9 +646,10 @@ final public class EnglishG2P {
     }
   }
    
-  /// Possessive clitics, which are the only ones whose phoneme is conditioned
-  /// on the sound before them. `'d` / `'ll` / `'re` / `'ve` are fixed strings
-  /// and resolve correctly standalone, so they are deliberately absent.
+  /// Possessive clitics, the only ones re-derived after a forced span. The
+  /// others (`'d` / `'ll` / `'re` / `'ve`) are conditioned on their host too
+  /// (see `ContractionClitics`), but a span splits them off their host's
+  /// group, a separate residual `ForcedSpanPossessiveTests` pins.
   static let possessiveClitics: Set<String> = ["'s", "\u{2019}s", "\u{2018}s"]
 
   /// Re-derives a possessive clitic that was split off from a forced-phoneme

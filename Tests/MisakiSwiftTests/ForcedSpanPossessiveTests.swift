@@ -62,10 +62,10 @@ struct ForcedSpanPossessiveTests {
     #expect(g2p.phonemize(text: "the [dog](/dˈɔɡ/)\u{2019}s bone").0 == "ðə dˈɔɡz bˈOn")
   }
 
-  /// The bound: only a clitic whose phoneme depends on what precedes it is
-  /// re-derived. `'d` / `'ll` / `'re` / `'ve` are fixed strings, so they are
-  /// left exactly as they were — these values are byte-identical before and
-  /// after the change.
+  /// The bound: only the possessive is re-derived. `'d` / `'ll` / `'re` /
+  /// `'ve` are left exactly as they were — these values are byte-identical
+  /// before and after the change, and after `ContractionClitics`, whose
+  /// readings reach a contraction only through its host's group.
   ///
   /// They are NOT the bare readings, and deliberately so: a forced span breaks
   /// the contraction out of its lexicon entry entirely (`they're` is `ðɛɹ`,
