@@ -41,7 +41,7 @@ final class Lexicon {
     self.vocab = british ? Lexicon.gbVocab : Lexicon.usVocab
   }
 
-  private static func supplementalGolds(british: Bool) -> [String: Any] {
+  static func supplementalGolds(british: Bool) -> [String: Any] {
     let fiance = british ? "fiˈɒnsA" : "fiˈɑnsA"
     let naive = british ? "nIˈiːv" : "nɑˈiv"
     let robotaxi = british ? "ɹˌQbətˈaksi" : "ɹˌObətˈæksi"
