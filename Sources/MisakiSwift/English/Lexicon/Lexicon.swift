@@ -680,28 +680,40 @@ final class Lexicon {
     return (nil, nil)
   }
   
-  /// Whether `word` is hyphenated and is more than a run of letters: it opens
-  /// on a hyphen, or one of its parts is a word the lexicon reads.
+  /// Whether `word` is hyphenated and is more than a run of letters: it holds
+  /// a word of four letters or more that the lexicon reads, or it opens on a
+  /// hyphen that is a separator.
   ///
   /// `isKnown` takes any run of capitals for a letter run, hyphens and all,
   /// and `getNNP` then spells every part of it: "POST-BELLUM" read
-  /// P-O-S-T-B-E-L-L-U-M and "NON-SPEECH" fourteen letters. With a word in it
-  /// the run is a compound the lexicon does not list, and unknown it falls to
-  /// its parts. A hyphen in front is a separator, not a letter: "-WI-FI",
-  /// "-U-S-" and "-A", each tried on the way to what follows the hyphen, were
-  /// spelled, which stranded the "non" before them and sent the whole group
-  /// to the fallback ("non-WI-FI" `nˌɑnwˌI`, "non-U-S-" `nˌɑnjus`).
+  /// P-O-S-T-B-E-L-L-U-M, "NON-SPEECH" fourteen letters and "COVID-19"
+  /// C-O-V-I-D. With a word in it the run is a compound the lexicon does not
+  /// list, and unknown it falls to its parts. Four letters is the bound
+  /// `clearsTheAllCapsBound` draws, for its reason: a shorter run of capitals
+  /// is where initialisms collide with words, so "ELM-270M" and "CC-BY" stay
+  /// letters, as they were.
   ///
-  /// A lone letter is not a word here, so single letters between hyphens are
-  /// still a run: "U-S-" is how a caller that has replaced an acronym's
-  /// periods writes "U.S.", and read as two parts it takes its stress on the
-  /// first (`jˈuˌɛs` for `jˌuˈɛs`); "e-" is how the "e" of "2.3e-5" is
-  /// reached, and without it the figure before it was lost. A run with no
-  /// word in it is still letters too ("LS-EEND", "X-QRS").
+  /// A hyphen in front is a separator, not a letter: "-WI-FI", "-U-S-",
+  /// "-NATO" and "-A", each tried on the way to what follows the hyphen, were
+  /// spelled, which stranded the "non" before them and sent the whole group
+  /// to the fallback ("non-WI-FI" `nˌɑnwˌI`, "non-U-S-" `nˌɑnjus`), and
+  /// spelled "pro-NATO". The exception is the same short run: two or three
+  /// capitals the lexicon also reads as a word are an initialism here, and
+  /// spelling them with the hyphen is what reads "pre-CO2" and "anti-ICE"
+  /// as letters rather than as "co" and "ice".
+  ///
+  /// Single letters between hyphens are still a run: "U-S-" is how a caller
+  /// that has replaced an acronym's periods writes "U.S.", and read as two
+  /// parts it takes its stress on the first (`jˈuˌɛs` for `jˌuˈɛs`); "e-" is
+  /// how the "e" of "2.3e-5" is reached, and without it the figure before it
+  /// was lost. A run with no word in it is still letters too ("LS-EEND").
   private func holdsHyphenatedWord(_ word: String) -> Bool {
     guard word.contains("-") else { return false }
-    if word.hasPrefix("-") { return true }
-    return word.split(separator: "-").contains { $0.count > 1 && reads($0.lowercased()) }
+    if word.hasPrefix("-") {
+      let rest = word.dropFirst()
+      return !((2...3).contains(rest.count) && reads(rest.lowercased()))
+    }
+    return word.split(separator: "-").contains { $0.count > 3 && reads($0.lowercased()) }
   }
 
   private func isKnown(_ word: String) -> Bool {

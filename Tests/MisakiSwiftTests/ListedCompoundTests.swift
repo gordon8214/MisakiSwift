@@ -216,40 +216,53 @@ struct ListedCompoundTests {
   }
 
   /// A run of capitals with a hyphen in it is a letter run only when it holds
-  /// no word. Before, the lexicon took any such run for letters and spelled
-  /// every part: "POST-BELLUM" was `pˌiˌOˌɛstˌibˌiˌiˌɛlˌɛljˌuˈɛm` and
-  /// "NON-SPEECH" fourteen letters.
+  /// no word of four letters or more. Before, the lexicon took any such run
+  /// for letters and spelled every part: "POST-BELLUM" was
+  /// `pˌiˌOˌɛstˌibˌiˌiˌɛlˌɛljˌuˈɛm`, "NON-SPEECH" fourteen letters, and
+  /// "COVID-19" `sˌiˌOvˌiˌIdˈi nˌIntˈin`, since "COVID-" was such a run.
   @Test func anUnlistedCompoundInCapitalsReadsByItsParts() {
     Self.expectReadings([
       ("THE POST-BELLUM SOUTH WAS POOR.", "ðə pˌOstbˈɛləm sˈWθ wˈʌz pˈʊɹ.", "ðə pˌQstbˈɛləm sˈWθ wˈɒz pˈɔː."),
-      ("NON-SPEECH data is used.", "nˌɑnspˈiʧ dˈATə ɪz jˈuzd.", "nˌɒnspˈiːʧ dˈAtə ɪz jˈuːzd.")
+      ("NON-SPEECH data is used.", "nˌɑnspˈiʧ dˈATə ɪz jˈuzd.", "nˌɒnspˈiːʧ dˈAtə ɪz jˈuːzd."),
+      ("COVID-19 cases rose.", "kˈOvˌɪd nˌIntˈin kˈAsᵻz ɹˈOz.", "kˈQvɪd nˌIntˈiːn kˈAsɪz ɹˈQz.")
     ])
   }
 
   /// A hyphen in front is a separator, not the first letter of a run. Before,
-  /// "-WI-FI", "-U-S-" and "-A", each tried on the way to what follows its
-  /// hyphen, were spelled; that left "non" alone, which is no word, and the
-  /// whole group went to the fallback: "non-WI-FI" `nˌɑnwˌI` (British
-  /// `nɒnwˈɪfi`), "non-U-S-" `nˌɑnjus` and "non-A" `nˌɑnˈɑ`. "U-S-" is how a
-  /// caller that has replaced an acronym's periods writes "U.S."
+  /// "-WI-FI", "-U-S-", "-ANE", "-NATO" and "-A", each tried on the way to
+  /// what follows its hyphen, were spelled. That spelled "pro-NATO"
+  /// (`pɹˌOˌɛnˌAtˌiˈO`), and after "non", which is no word alone, it sent the
+  /// whole group to the fallback: "non-WI-FI" `nˌɑnwˌI` (British `nɒnwˈɪfi`),
+  /// "non-U-S-" `nˌɑnjus`, "non-ANE" `nˌɑnˈA` and "non-A" `nˌɑnˈɑ`. "U-S-" is
+  /// how a caller that has replaced an acronym's periods writes "U.S."
   @Test func aHyphenInFrontOfARunIsASeparator() {
     Self.expectReadings([
       ("non-WI-FI titles", "nˌɑnwˈIfˌI tˈITᵊlz", "nˌɒnwˈIfˌI tˈItᵊlz"),
       ("The non-U-S- markets fell.", "ðə nˌɑnjˌuˈɛs mˈɑɹkəts fˈɛl.", "ðə nˌɒnjˌuːˈɛs mˈɑːkɪts fˈɛl."),
-      ("The non-A shares rose.", "ðə nˈɑnˌA ʃˈɛɹz ɹˈOz.", "ðə nˈɒnˌA ʃˈɛːz ɹˈQz.")
+      ("The non-ANE hardware.", "ðə nˌɑnˌAˌɛnˈi hˈɑɹdwˌɛɹ.", "ðə nˌɒnˌAˌɛnˈiː hˈɑːdwɛː."),
+      ("The non-A shares rose.", "ðə nˈɑnˌA ʃˈɛɹz ɹˈOz.", "ðə nˈɒnˌA ʃˈɛːz ɹˈQz."),
+      ("A pro-NATO stance.", "ɐ pɹˌOnˈATO stˈæns.", "ɐ pɹˌQnˈAtQ stˈɑːns.")
     ])
   }
 
-  /// What that must leave alone. A run with no word in it is still letters
-  /// (American has no "mia-mia"; a lone letter is not a word, so "X-QRS" is
-  /// one run and not two). Single letters are a run however they end: "U-S-"
-  /// read as two parts takes its stress on the first (`jˈuˌɛs`), and "e-" is
-  /// how the "e" of "2.3e-5" is reached, without which the figure before it
-  /// was lost (`ˈi fˈIv`).
-  @Test func aHyphenatedRunWithNoWordInItIsStillLetters() {
+  /// What both rules must leave alone, each a regression of an earlier cut.
+  /// Two or three capitals the lexicon also reads as a word are an initialism
+  /// beside a hyphen, and spelling them with it is what keeps "ICE", "CO" and
+  /// "ELM" from reading "ice", "co" and "elm". A run with no word in it is
+  /// still letters, four letters long or not (American has no "mia-mia"; a
+  /// lone letter is not a word, so "X-QRS" is one run and not two; "ZVKJ" is
+  /// long enough and no word). Single letters are a run however they
+  /// end: "U-S-" read as two parts takes its stress on the first (`jˈuˌɛs`),
+  /// and "e-" is how the "e" of "2.3e-5" is reached, without which the figure
+  /// before it was lost (`ˈi fˈIv`).
+  @Test func aRunOfInitialsBesideAHyphenIsStillLetters() {
     Self.expectReadings([
+      ("An anti-ICE protest.", "ɐn ˌæntIˌIsˌiˈi pɹˈOtˌɛst.", "ɐn ˌantiˌIsˌiːˈiː pɹˈQtɛst."),
+      ("The pre-CO2 era.", "ðə pɹˈi sˌiˈO tˈu ˈɛɹə.", "ðə pɹˈiː sˌiːˈQ tˈuː ˈɪəɹə."),
+      ("OpenELM-270M works.", "ˈOpᵊn ˌiˌɛlˈɛm tˈu sˈɛvənti ˈɛm wˈɜɹks.", "ˈQpᵊn ˌiːˌɛlˈɛm tˈuː sˈɛvnti ˈɛm wˈɜːks."),
       ("They said MIA-MIA again.", "ðˌA sˈɛd ˌɛmˌIˌAˌɛmˌIˈA əɡˈɛn.", "ðˌA sˈɛd mˈIəmˌIə əɡˈɛn."),
       ("They said X-QRS again.", "ðˌA sˈɛd ˌɛkskjˌuˌɑɹˈɛs əɡˈɛn.", "ðˌA sˈɛd ˌɛkskjˌuːˌɑːˈɛs əɡˈɛn."),
+      ("See QX-ZVKJ.md today.", "sˈi kjˌuˌɛkszˌivˌikˌAʤˈA.ˈɛmd tədˈA.", "sˈiː kjˌuːˌɛkszˌiːvˌiːkˌAʤˈA.ˈɛmd tədˈA."),
       ("The U-S- is one of the few.", "ðə jˌuˈɛs ɪz wˈʌn ʌv ðə fjˈu.", "ðə jˌuːˈɛs ɪz wˈʌn ɒv ðə fjˈuː."),
       ("The parity is 2.3e-5 today.",
        "ðə pˈɛɹəTi ɪz tˈu pYnt θɹˈi ˈi fˈIv tədˈA.", "ðə pˈaɹɪti ɪz tˈuː pYnt θɹˈiː ˈiː fˈIv tədˈA.")
