@@ -12,7 +12,7 @@ import Testing
 ///
 /// Rendered on the bundled CoreML chain over 60 prose lines, one space against
 /// two: the word's last phoneme and the gap took 120 ms and 222 ms on average,
-/// and 14 lines held 200 ms or more of silence there against 3. "the 1950s
+/// and 3 lines held 200 ms or more of silence there against 14. "the 1950s
 /// were" gave its /z/ 25 ms and 500 ms. Every "before" below was measured at
 /// `86f7f55`.
 struct GroupTrailingSpaceTests {
@@ -32,10 +32,12 @@ struct GroupTrailingSpaceTests {
   /// "s", a decade, and a word with a trailing slash. Before, each had two
   /// spaces where the comment marks them: `fˈɜɹst  tˈu`, `tˈɛnz  ʧˈʌŋks`,
   /// `nˈIndiz  wɜɹ`, `fˈɔɹTiz  wɜɹ`, `θɹˈiz  ˈWtpˌʊt`, `hˈʌndɹədθ  ˌænəvˈɜɹsəɹi`
-  /// and `slˈæʃ  dəɹˈɛktəɹi`.
+  /// and `slˈæʃ  dəɹˈɛktəɹi`. The figure after "1st" reads as three words,
+  /// which is what tells a reading that ends in a space from one that only
+  /// holds one.
   @Test func aGroupThatEndsOnAnEmptiedSubtokenTakesOneSpace() {
     Self.expectReadings([
-      ("The 1st two hundred ninety pages are free.",
+      ("The 1st 290 pages are free.",
        "ðə fˈɜɹst tˈu hˈʌndɹəd nˈIndi pˈAʤᵻz ɑɹ fɹˈi.",
        "ðə fˈɜːst tˈuː hˈʌndɹəd nˈInti pˈAʤɪz ɑː fɹˈiː."),
       ("We split it into 10s chunks.",
@@ -65,8 +67,21 @@ struct GroupTrailingSpaceTests {
     ])
   }
 
-  /// Two neighbours of this fault that are not it, pinned as they are so the
-  /// rule stays as narrow as it was measured.
+  /// A forced reading is the other way a reading comes to end in a space,
+  /// and it takes one too (it had two). It is the space that is tested for
+  /// and not whitespace: a forced reading that ends in a tab keeps the space
+  /// after it, because the vocabulary has no tab, the tokenizer drops it, and
+  /// the two words would be left with nothing between them.
+  @Test func aForcedReadingKeepsItsSeparatorWhateverItEndsIn() {
+    Self.expectReadings([
+      ("A [word](/wˈɜɹd /) next.", "ɐ wˈɜɹd nˈɛkst.", "ɐ wˈɜɹd nˈɛkst."),
+      ("A [word](/wˈɜɹd\t/) next.", "ɐ wˈɜɹd\t nˈɛkst.", "ɐ wˈɜɹd\t nˈɛkst."),
+      ("A [word](/wˈɜɹd\u{A0}/) next.", "ɐ wˈɜɹd\u{A0} nˈɛkst.", "ɐ wˈɜɹd\u{A0} nˈɛkst.")
+    ])
+  }
+
+  /// Three neighbours of this fault that are not it, pinned as they are so
+  /// the rule stays as narrow as it was measured.
   ///
   /// A token erased between two spaces leaves both of them. For a spaced
   /// dash, which has no reading, those two spaces are the only break it gets,
@@ -76,8 +91,12 @@ struct GroupTrailingSpaceTests {
   /// mark. That lengthens or shortens a pause the writer asked for (a comma's
   /// by 57 ms of 375 over 18 renders, a full stop's by 28 ms of 465 the other
   /// way over 22) and adds none.
+  ///
+  /// A group followed at once by a token that is erased takes that token's
+  /// whitespace after its own space, so it still has two.
   @Test func anErasedTokenAndASpaceBeforePunctuationAreLeftAlone() {
     Self.expectReadings([
+      ("It took 15s` to run.", "ˌɪt tˈʊk fˌɪftˈinz  tə ɹˈʌn.", "ˌɪt tˈʊk fˌɪftˈiːnz  tə ɹˈʌn."),
       ("The market -- which fell -- rose.",
        "ðə mˈɑɹkət  wˌɪʧ fˈɛl  ɹˈOz.", "ðə mˈɑːkɪt  wˌɪʧ fˈɛl  ɹˈQz."),
       ("It moved -3 today.", "ˌɪt mˈuvd  tədˈA.", "ˌɪt mˈuːvd  tədˈA."),

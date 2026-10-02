@@ -879,10 +879,14 @@ final public class EnglishG2P {
     // 25. Upstream drops the space inside `merge_tokens` instead, by testing
     // the phonemes for truthiness. That is not taken here because the same
     // space is all that separates "5th" from "-order", which would fuse.
+    //
+    // The test is for the space itself, not for whitespace. A forced reading
+    // can end in a tab or a no-break space, which the vocabulary lacks and the
+    // tokenizer drops, so the space after it is the only separator it has.
     let result = finalTokens
       .map { token in
         let phonemes = token.phonemes ?? self.unk
-        let endsInSpace = phonemes.last?.isWhitespace == true
+        let endsInSpace = phonemes.hasSuffix(" ")
         return phonemes + (token.whitespace.isEmpty || endsInSpace ? "" : " ")
       }
       .joined()
