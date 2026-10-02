@@ -134,6 +134,138 @@ struct ListedCompoundTests {
     }
   }
 
+  /// A compound gold lists in a casing of its own, sentence case ("X-ray",
+  /// "Blu-ray", "Ku-band") or a lower-case head on a proper noun
+  /// ("un-American", "neo-Nazi", "al-Qaeda"), reads from that entry in the
+  /// other casings prose writes it in. `growDictionary` keyed none of them.
+  /// Before, at `28310e3`: "Un-American" opened a sentence as `jˌunəmˈɛɹəkən`
+  /// in American, "The X-RAY" was spelled (`ˌɛksˌɑɹˌAwˈI`), "BLU-RAY" spelled
+  /// its first part (`bˌiˌɛljˈuɹˈA`), "ku-band" was `kˈubˈænd`, "Neo-Nazi"
+  /// `nˈiOnˈɑtsi` and "Al-Qaeda" `ˈælkˈidə` ("al-keeda").
+  @Test func aCompoundListedInItsOwnCasingReadsInEveryCasing() {
+    Self.expectReadings([
+      ("Un-American activities.", "ˌʌnəmˈɛɹəkən æktˈɪvəTiz.", "ˌʌnəmˈɛɹɪkᵊn aktˈɪvɪtiz."),
+      ("The X-RAY showed it.", "ði ˈɛksɹˌA ʃˈOd ɪt.", "ði ˈɛksɹA ʃˈQd ɪt."),
+      ("The x-ray showed it.", "ði ˈɛksɹˌA ʃˈOd ɪt.", "ði ˈɛksɹA ʃˈQd ɪt."),
+      ("A BLU-RAY disc.", "ɐ blˈuɹˌA dˈɪsk.", "ɐ blˈuːɹˌA dˈɪsk."),
+      ("A blu-ray disc.", "ɐ blˈuɹˌA dˈɪsk.", "ɐ blˈuːɹˌA dˈɪsk."),
+      ("A Blu-Ray Disc.", "ɐ blˈuɹˌA dˈɪsk.", "ɐ blˈuːɹˌA dˈɪsk."),
+      ("The ku-band dish.", "ðə kˈAjubˌænd dˈɪʃ.", "ðə kˈAjuːband dˈɪʃ."),
+      ("Neo-Nazi groups marched.", "nˌiOnˈɑtsi ɡɹˈups mˈɑɹʧt.", "nˌiːQnˈɑːtsi ɡɹˈuːps mˈɑːʧt."),
+      ("Al-Qaeda claimed it.", "ælkˈIdə klˈAmd ɪt.", "alkˈIdə klˈAmd ɪt.")
+    ])
+  }
+
+  /// The three variants, each where it is the only one that makes the
+  /// spelling: lower case, the first letter raised ("off-off-Broadway" opens a
+  /// sentence with one capital more, not two) and every part raised.
+  @Test func eachCasingVariantOfAMixedCaseKeyIsListed() {
+    for lexicon in [Lexicon(british: false), Lexicon(british: true)] {
+      for listed in ["x-ray", "un-american", "Off-off-Broadway", "X-Ray", "Un-American", "UN-AMERICAN"] {
+        #expect(lexicon.listsCompound(listed), "\(listed) should be listed")
+      }
+      for unlisted in ["Un-american", "x-RAY"] {
+        #expect(!lexicon.listsCompound(unlisted), "\(unlisted) should not be listed")
+      }
+    }
+  }
+
+  /// What makes those variants one answer each: no hyphenated key is listed
+  /// in two casings, in either tier of either dialect, so no two entries
+  /// compete for a variant and the dictionary's iteration order cannot pick.
+  @Test func noHyphenatedKeyIsListedInTwoCasings() {
+    for british in [false, true] {
+      let tiers = [
+        DataResourcesUtil.loadGold(british: british).merging(Lexicon.supplementalGolds(british: british)) { $1 },
+        DataResourcesUtil.loadSilver(british: british)
+      ]
+      for tier in tiers {
+        let casings = Dictionary(grouping: tier.keys.filter { $0.contains("-") }, by: { $0.lowercased() })
+        #expect(casings.values.filter { $0.count > 1 }.isEmpty)
+      }
+    }
+  }
+
+  /// A part is judged under its own tag, because the tag is what spells a
+  /// short run of capitals: under NNP "TO", "UP", "GO" and "BY" came back
+  /// letter by letter, the compound's parts all "read", and the entry was not
+  /// consulted. Before: "TO-DO" `tˌiˈOdˈu`, "SET-UP" `sˈɛtjˌupˈi`, "GO-BY"
+  /// `ʤˌiˈObˌiwˈI`, American "NO-GO" `nˈOʤˌiˈO`. A compound whose parts read
+  /// as words under their tags still reads part by part, as before.
+  @Test func aPartTheTaggerHasSpelledIsNotRead() {
+    Self.expectReadings([
+      ("A TO-DO list.", "ɐ tədˈu lˈɪst.", "ɐ tədˈuː lˈɪst."),
+      ("The SET-UP took time.", "ðə sˈɛTˌʌp tˈʊk tˈIm.", "ðə sˈɛtʌp tˈʊk tˈIm."),
+      ("They said GO-BY again.", "ðˌA sˈɛd ɡˈObˌI əɡˈɛn.", "ðˌA sˈɛd ɡˈQbI əɡˈɛn."),
+      ("They said CARRY-ON again.", "ðˌA sˈɛd kˈɛɹiˈɔn əɡˈɛn.", "ðˌA sˈɛd kˈaɹiˈɒn əɡˈɛn."),
+      ("They said CUP-AND-RING again.", "ðˌA sˈɛd kˈʌpˈændɹˈɪŋ əɡˈɛn.", "ðˌA sˈɛd kˈʌpˈandɹˈɪŋ əɡˈɛn.")
+    ])
+    let name = EnglishPOSTag(lexicalClass: nil, penn: "NNP")
+    for lexicon in [Lexicon(british: false), Lexicon(british: true)] {
+      #expect(lexicon.reads("TO"))
+      #expect(!lexicon.reads("TO", tag: name))
+      #expect(lexicon.reads("RAY", tag: name))
+      #expect(lexicon.reads("LONG", tag: name))
+      #expect(!lexicon.reads("SCI", tag: name))
+      // Capitals gold lists are read as gold has them, and for "ABS" and
+      // "AD" that is the letters.
+      for listed in ["ABS", "AD", "NASA"] {
+        #expect(lexicon.reads(listed, tag: name), "\(listed) should read")
+      }
+    }
+  }
+
+  /// A run of capitals with a hyphen in it is a letter run only when it holds
+  /// no word. Before, the lexicon took any such run for letters and spelled
+  /// every part: "POST-BELLUM" was `pˌiˌOˌɛstˌibˌiˌiˌɛlˌɛljˌuˈɛm` and
+  /// "NON-SPEECH" fourteen letters.
+  @Test func anUnlistedCompoundInCapitalsReadsByItsParts() {
+    Self.expectReadings([
+      ("THE POST-BELLUM SOUTH WAS POOR.", "ðə pˌOstbˈɛləm sˈWθ wˈʌz pˈʊɹ.", "ðə pˌQstbˈɛləm sˈWθ wˈɒz pˈɔː."),
+      ("NON-SPEECH data is used.", "nˌɑnspˈiʧ dˈATə ɪz jˈuzd.", "nˌɒnspˈiːʧ dˈAtə ɪz jˈuːzd.")
+    ])
+  }
+
+  /// A hyphen in front is a separator, not the first letter of a run. Before,
+  /// "-WI-FI", "-U-S-" and "-A", each tried on the way to what follows its
+  /// hyphen, were spelled; that left "non" alone, which is no word, and the
+  /// whole group went to the fallback: "non-WI-FI" `nˌɑnwˌI` (British
+  /// `nɒnwˈɪfi`), "non-U-S-" `nˌɑnjus` and "non-A" `nˌɑnˈɑ`. "U-S-" is how a
+  /// caller that has replaced an acronym's periods writes "U.S."
+  @Test func aHyphenInFrontOfARunIsASeparator() {
+    Self.expectReadings([
+      ("non-WI-FI titles", "nˌɑnwˈIfˌI tˈITᵊlz", "nˌɒnwˈIfˌI tˈItᵊlz"),
+      ("The non-U-S- markets fell.", "ðə nˌɑnjˌuˈɛs mˈɑɹkəts fˈɛl.", "ðə nˌɒnjˌuːˈɛs mˈɑːkɪts fˈɛl."),
+      ("The non-A shares rose.", "ðə nˈɑnˌA ʃˈɛɹz ɹˈOz.", "ðə nˈɒnˌA ʃˈɛːz ɹˈQz.")
+    ])
+  }
+
+  /// What that must leave alone. A run with no word in it is still letters
+  /// (American has no "mia-mia"; a lone letter is not a word, so "X-QRS" is
+  /// one run and not two). Single letters are a run however they end: "U-S-"
+  /// read as two parts takes its stress on the first (`jˈuˌɛs`), and "e-" is
+  /// how the "e" of "2.3e-5" is reached, without which the figure before it
+  /// was lost (`ˈi fˈIv`).
+  @Test func aHyphenatedRunWithNoWordInItIsStillLetters() {
+    Self.expectReadings([
+      ("They said MIA-MIA again.", "ðˌA sˈɛd ˌɛmˌIˌAˌɛmˌIˈA əɡˈɛn.", "ðˌA sˈɛd mˈIəmˌIə əɡˈɛn."),
+      ("They said X-QRS again.", "ðˌA sˈɛd ˌɛkskjˌuˌɑɹˈɛs əɡˈɛn.", "ðˌA sˈɛd ˌɛkskjˌuːˌɑːˈɛs əɡˈɛn."),
+      ("The U-S- is one of the few.", "ðə jˌuˈɛs ɪz wˈʌn ʌv ðə fjˈu.", "ðə jˌuːˈɛs ɪz wˈʌn ɒv ðə fjˈuː."),
+      ("The parity is 2.3e-5 today.",
+       "ðə pˈɛɹəTi ɪz tˈu pYnt θɹˈi ˈi fˈIv tədˈA.", "ðə pˈaɹɪti ɪz tˈuː pYnt θɹˈiː ˈiː fˈIv tədˈA.")
+    ])
+  }
+
+  /// A mark the tagger calls a word is still a mark. Here it calls the
+  /// ellipsis a noun; with no reading it was neither readable nor junk, and
+  /// the whole group went to the fallback, compound included: `hˈIfˌIəɹ`,
+  /// British `hˈIfɪki`.
+  @Test func aMarkTheTaggerCallsAWordDoesNotCostTheCompound() {
+    Self.expectReadings([
+      ("I love Hi-Fi…", "ˌI lˈʌv hˈIfˌI…", "ˌI lˈʌv hˈIfI…")
+    ])
+  }
+
   /// Gold entries that drop a part of the compound they key. Before, British
   /// "The post-bellum South." was `ðə bˈɛləm sˈWθ.` and "A sub-boreal
   /// climate." `ɐ bˈɔːɹɪəl klˈImɪt.`
@@ -154,7 +286,11 @@ struct ListedCompoundTests {
       let lexicon = Lexicon(british: british)
       for key in Lexicon.truncatedCompoundGolds(british: british) {
         let lower = key.lowercased()
-        let casings = [key, lower, lower.capitalized, lower.prefix(1).uppercased() + lower.dropFirst(), key.uppercased()]
+        let raised = key.split(separator: "-").map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: "-")
+        let casings = [
+          key, lower, lower.capitalized, lower.prefix(1).uppercased() + lower.dropFirst(), key.uppercased(),
+          key.prefix(1).uppercased() + key.dropFirst(), raised
+        ]
         for casing in casings {
           #expect(!lexicon.listsCompound(casing), "\(casing) is still listed")
         }

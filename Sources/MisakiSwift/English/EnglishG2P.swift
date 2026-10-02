@@ -526,6 +526,16 @@ final public class EnglishG2P {
     return true
   }
   
+  /// A token the tagger calls punctuation, or one made only of punctuation
+  /// marks whatever it calls it. The tagger reads a mark glued to a word as a
+  /// word now and then ("Hi-Fi…" ends in a noun), and a mark with no reading
+  /// is neither readable nor junk, so it sent its whole subtoken group to the
+  /// fallback, the word before it included: `hˈIfˌIəɹ`.
+  private func isPunctuation(_ token: MToken) -> Bool {
+    if let tag = token.tag, EnglishG2P.punctuationTags.contains(tag) { return true }
+    return !token.text.isEmpty && token.text.allSatisfy(EnglishG2P.punctuactions.contains)
+  }
+
   func retokenize(_ tokens: [MToken], pennTags: inout PennTagMap) -> [Any] {
     var words: [Any] = []
     var currency: String? = nil
@@ -577,7 +587,7 @@ final public class EnglishG2P {
           currency = token.text
           token.phonemes = ""
           token.`_`.rating = 4
-        } else if token.text == "-", subtokens.count == 1, joinsListedCompound(tokens, at: i) {
+        } else if token.text == "-", subtokens.count == 1, joinsListedCompound(tokens, at: i, pennTags: pennTags) {
           // Left unread, so it joins its neighbours' group and the compound
           // is looked up whole. Decided by the text and not the tag: spaCy
           // calls most intra-word hyphens HYPH, but some `:` ("Hi-Fi is
@@ -608,7 +618,7 @@ final public class EnglishG2P {
         // silently dropped: "50%" was voiced "fifty", losing "percent"
         // entirely. Falling through instead lets `Lexicon.getSpecialCase`
         // resolve them through `symbolSet` as upstream misaki does.
-        } else if let tag = token.tag, EnglishG2P.punctuationTags.contains(tag),
+        } else if isPunctuation(token),
                   Lexicon.symbolSet[token.text] == nil,
                   !token.text.lowercased().unicodeScalars.allSatisfy({ (97...122).contains(Int($0.value)) }) {
           if let val = EnglishG2P.punctuationTagPhonemes[token.text] {

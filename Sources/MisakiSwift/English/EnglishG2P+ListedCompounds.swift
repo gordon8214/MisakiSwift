@@ -42,7 +42,7 @@ extension EnglishG2P {
   /// counts past the bound, from either side, so they still agree, and a
   /// pathological run costs each hyphen a bounded walk instead of the whole
   /// run (a 3,000-word run took 37 s).
-  func joinsListedCompound(_ tokens: [MToken], at index: Int) -> Bool {
+  func joinsListedCompound(_ tokens: [MToken], at index: Int, pennTags: PennTagMap) -> Bool {
     guard isCompoundHyphen(tokens, at: index) else { return false }
 
     // The words of the run: every second token, out from the hyphen.
@@ -64,7 +64,7 @@ extension EnglishG2P {
     var start = 0
     while start < words.count - 1 {
       var end = words.count - 1
-      while end > start, !isListedCompound(words[start...end].map { tokens[$0].text }) { end -= 1 }
+      while end > start, !isListedCompound(words[start...end].map { tokens[$0] }, pennTags: pennTags) { end -= 1 }
       if end > start {
         if words[start] < index, index < words[end] { return true }
         start = end + 1
@@ -90,7 +90,12 @@ extension EnglishG2P {
     return subtokenize(word: token.text).count == 1
   }
 
-  private func isListedCompound(_ parts: [String]) -> Bool {
-    lexicon.listsCompound(parts.joined(separator: "-")) && !parts.allSatisfy(lexicon.reads)
+  /// Each part is judged under its own tag, as it would be read standing
+  /// alone: the tag is what spells a short run of capitals.
+  private func isListedCompound(_ parts: [MToken], pennTags: PennTagMap) -> Bool {
+    guard lexicon.listsCompound(parts.map(\.text).joined(separator: "-")) else { return false }
+    return !parts.allSatisfy { part in
+      lexicon.reads(part.text, tag: EnglishPOSTag(lexicalClass: part.tag, penn: pennTags[ObjectIdentifier(part)]))
+    }
   }
 }

@@ -33,10 +33,9 @@ final class Lexicon {
   init(british: Bool) {
     self.british = british
     // Load and grow dictionaries
-    let truncated = Lexicon.truncatedCompoundGolds(british: british)
-    let rawGolds = DataResourcesUtil.loadGold(british: british)
-      .filter { !truncated.contains($0.key) }
-      .merging(Lexicon.supplementalGolds(british: british)) { _, supplement in supplement }
+    var rawGolds = DataResourcesUtil.loadGold(british: british)
+    for key in Lexicon.truncatedCompoundGolds(british: british) { rawGolds.removeValue(forKey: key) }
+    rawGolds.merge(Lexicon.supplementalGolds(british: british)) { _, supplement in supplement }
     let rawSilvers = DataResourcesUtil.loadSilver(british: british)
     self.golds = Lexicon.growDictionary(rawGolds)
     self.silvers = Lexicon.growDictionary(rawSilvers)
@@ -52,10 +51,8 @@ final class Lexicon {
   /// carries its singular's reading and "muckety-muck" that of "muck-a-muck".
   ///
   /// Withdrawn rather than repaired: without its entry each reads part by
-  /// part, in full, and there is no measured reading to put in its place.
-  /// (Set in capitals, an unlisted compound whose hyphen the tagger leaves in
-  /// its group is spelled, as any such compound is: `isKnown` takes a run of
-  /// capitals for a letter run.)
+  /// part, in full, and there is no measured reading to put in its place,
+  /// in capitals too (`holdsHyphenatedWord`).
   /// They were reachable all along, wherever the tagger let a hyphen stay in
   /// its group ("The post-bellum South." read `ðə bˈɛləm sˈWθ`), and
   /// `joinsListedCompound` would reach the ones with an unreadable part
@@ -146,13 +143,29 @@ final class Lexicon {
       if k.count < 2 {
           continue
       }
-      
-      if k == k.lowercased() {
+
+      let lower = k.lowercased()
+      if k == lower {
         if k != k.capitalized {
             e[k.capitalized] = v
         }
-      } else if k == k.lowercased().capitalized {
-        e[k.lowercased()] = v
+      } else if k == lower.capitalized {
+        e[lower] = v
+      } else if k.contains("-") {
+        // A compound listed in a casing of its own: sentence case ("X-ray",
+        // "Blu-ray", "Ku-band") or a lower-case head on a proper noun
+        // ("un-American", "al-Qaeda"). Neither branch above keys anything for
+        // it, so "x-ray" and "ku-band" missed, a run of capitals had no lower
+        // case to fold to ("BLU-RAY" was spelled), and the casing that opens a
+        // sentence or a headline missed too ("Un-American", "Blu-Ray"). Keyed
+        // here in lower case, with its first letter raised and with every
+        // part's first letter raised, the rest as the entry writes it.
+        e[lower] = v
+        e[k.prefix(1).uppercased() + k.dropFirst()] = v
+        e[k.split(separator: "-", omittingEmptySubsequences: false)
+          .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+          .joined(separator: "-")] = v
+        continue
       } else {
         continue
       }
@@ -163,7 +176,6 @@ final class Lexicon {
       // `getWord` folds only an unhyphenated word to lower case, so a
       // compound needs the key itself. Where the dictionary lists both
       // casings the lower-case entry supplies it, whichever is met first.
-      let lower = k.lowercased()
       if k.contains("-"), k == lower || d[lower] == nil {
         e[lower.prefix(1).uppercased() + lower.dropFirst()] = v
       }
@@ -399,15 +411,24 @@ final class Lexicon {
     return reading.contains(Lexicon.primaryStress)
   }
 
-  /// Whether the lexicon reads `word` by itself, from an entry or a stem,
-  /// rather than leaving it to the fallback network. An unlisted run of
-  /// capitals comes back spelled letter by letter (`getNNP`), which is not a
-  /// reading of the word, so it is judged in lower case.
-  func reads(_ word: String) -> Bool {
-    guard getWord(word, tag: .none, stress: nil, ctx: TokenContext()).phoneme != nil else { return false }
-    let lower = word.lowercased()
-    if word.count > 1, word != lower, word == word.uppercased(), golds[word] == nil { return reads(lower) }
-    return true
+  /// Whether the lexicon reads `word` by itself under `tag`, from an entry or
+  /// a stem, rather than leaving it to the fallback network. An unlisted run of
+  /// capitals that comes back spelled letter by letter (`getNNP`) is not read:
+  /// that is no reading of the word.
+  ///
+  /// The tag is the token's own because it decides that spelling. A run of
+  /// capitals too short to clear the all-caps bound keeps its capitals under
+  /// NNP, and `lookup` then folds it to gold alone and spells a reading with no
+  /// primary stress: "TO" and "GO" are spelled as proper nouns ("SET-TO" read
+  /// `sˈɛttˌiˈO`, "GO-BY" `ʤˌiˈObˌiwˈI`) and read as words under any other tag,
+  /// as "AND" in "CUP-AND-RING" is. With no tag a run of capitals is judged as
+  /// its lower case.
+  func reads(_ word: String, tag: EnglishPOSTag = .none) -> Bool {
+    guard let reading = getWord(word, tag: tag, stress: nil, ctx: TokenContext()).phoneme else { return false }
+    guard word.count > 1, word != word.lowercased(), word == word.uppercased(), golds[word] == nil else {
+      return true
+    }
+    return reading != getNNP(word).phoneme
   }
 
   /// Whether gold lists `token`'s capitals with a reading of their own that
@@ -659,6 +680,30 @@ final class Lexicon {
     return (nil, nil)
   }
   
+  /// Whether `word` is hyphenated and is more than a run of letters: it opens
+  /// on a hyphen, or one of its parts is a word the lexicon reads.
+  ///
+  /// `isKnown` takes any run of capitals for a letter run, hyphens and all,
+  /// and `getNNP` then spells every part of it: "POST-BELLUM" read
+  /// P-O-S-T-B-E-L-L-U-M and "NON-SPEECH" fourteen letters. With a word in it
+  /// the run is a compound the lexicon does not list, and unknown it falls to
+  /// its parts. A hyphen in front is a separator, not a letter: "-WI-FI",
+  /// "-U-S-" and "-A", each tried on the way to what follows the hyphen, were
+  /// spelled, which stranded the "non" before them and sent the whole group
+  /// to the fallback ("non-WI-FI" `nˌɑnwˌI`, "non-U-S-" `nˌɑnjus`).
+  ///
+  /// A lone letter is not a word here, so single letters between hyphens are
+  /// still a run: "U-S-" is how a caller that has replaced an acronym's
+  /// periods writes "U.S.", and read as two parts it takes its stress on the
+  /// first (`jˈuˌɛs` for `jˌuˈɛs`); "e-" is how the "e" of "2.3e-5" is
+  /// reached, and without it the figure before it was lost. A run with no
+  /// word in it is still letters too ("LS-EEND", "X-QRS").
+  private func holdsHyphenatedWord(_ word: String) -> Bool {
+    guard word.contains("-") else { return false }
+    if word.hasPrefix("-") { return true }
+    return word.split(separator: "-").contains { $0.count > 1 && reads($0.lowercased()) }
+  }
+
   private func isKnown(_ word: String) -> Bool {
     if golds[word] != nil || Lexicon.symbolSet[word] != nil || silvers[word] != nil { return true }
     
@@ -674,7 +719,7 @@ final class Lexicon {
     if word.count == 1 { return true }
     if word == word.uppercased(), golds[word.lowercased()] != nil { return true }
     let idx = word.index(after: word.startIndex)
-    return word[idx...].uppercased() == word[idx...]
+    return word[idx...].uppercased() == word[idx...] && !holdsHyphenatedWord(word)
   }
   
   private func stem_s(
