@@ -130,7 +130,14 @@ final class Lexicon {
       "cosponsor": british ? "kˌQspˈɒnsə" : "kˌOspˈɑnsəɹ",
       "cosponsoring": british ? "kˌQspˈɒnsəɹɪŋ" : "kˌOspˈɑnsəɹɪŋ",
       "cosponsorship": british ? "kˌQspˈɒnsəʃɪp" : "kˌOspˈɑnsəɹʃˌɪp",
-      "niño": british ? "nˈiːnjQ" : "nˈinjO"
+      "niño": british ? "nˈiːnjQ" : "nˈinjO",
+      // In no tier, so it was spelled: `ʤˌiˌAˌApˈi`. Said as a word it is
+      // gold's `gap`. "Non-GAAP" used to reach that reading through the
+      // fallback, which read the whole group (`nˌɑnɡˈæp`, British
+      // `nɒnɡˈɑːp`); `holdsHyphenatedWord` now reads what follows "non-" as
+      // it reads alone, so the entry is what keeps "non-GAAP" from being
+      // "non" and four letters.
+      "GAAP": british ? "ɡˈap" : "ɡˈæp"
     ]
   }
     
@@ -159,7 +166,10 @@ final class Lexicon {
         // case to fold to ("BLU-RAY" was spelled), and the casing that opens a
         // sentence or a headline missed too ("Un-American", "Blu-Ray"). Keyed
         // here in lower case, with its first letter raised and with every
-        // part's first letter raised, the rest as the entry writes it.
+        // part's first letter raised, the rest as the entry writes it. A key
+        // set in capitals is one of these too ("CD-ROM", "MS-DOS"), so its
+        // lower case now reads from it: "ms-dos" was `ˈɛmzdˈuz`. Empty parts
+        // are kept, so a key that ends on a hyphen would keep it.
         e[lower] = v
         e[k.prefix(1).uppercased() + k.dropFirst()] = v
         e[k.split(separator: "-", omittingEmptySubsequences: false)
@@ -680,18 +690,28 @@ final class Lexicon {
     return (nil, nil)
   }
   
+  /// The most parts a hyphenated run is judged by: gold's longest hyphenated
+  /// key has seven. A longer run of capitals is a letter run, as it always
+  /// was. Without the bound a run one subtoken group holds whole falls to the
+  /// group's part-by-part walk, which is cubic: 400 parts joined by "'-" took
+  /// 59 s, and 0.009 s as letters.
+  private static let longestHyphenatedRun = 7
+
   /// Whether `word` is hyphenated and is more than a run of letters: it holds
-  /// a word of four letters or more that the lexicon reads, or it opens on a
+  /// a word of four letters or more that the lexicon lists, or it opens on a
   /// hyphen that is a separator.
   ///
   /// `isKnown` takes any run of capitals for a letter run, hyphens and all,
   /// and `getNNP` then spells every part of it: "POST-BELLUM" read
-  /// P-O-S-T-B-E-L-L-U-M, "NON-SPEECH" fourteen letters and "COVID-19"
-  /// C-O-V-I-D. With a word in it the run is a compound the lexicon does not
-  /// list, and unknown it falls to its parts. Four letters is the bound
+  /// P-O-S-T-B-E-L-L-U-M, "NON-SPEECH" nine letters, and "COVID-19" and
+  /// "NASDAQ-100" C-O-V-I-D and N-A-S-D-A-Q, since each opens on such a run.
+  /// With a word in it the run is a compound the lexicon does not list, and
+  /// unknown it falls to its parts. Four letters is the bound
   /// `clearsTheAllCapsBound` draws, for its reason: a shorter run of capitals
   /// is where initialisms collide with words, so "ELM-270M" and "CC-BY" stay
-  /// letters, as they were.
+  /// letters, as they were. The word is one the lexicon LISTS, in capitals or
+  /// in lower case. A stem is not enough: "simd" reads as "sim" and a past
+  /// tense, and "SIMD-128" came out "simmed".
   ///
   /// A hyphen in front is a separator, not a letter: "-WI-FI", "-U-S-",
   /// "-NATO" and "-A", each tried on the way to what follows the hyphen, were
@@ -709,11 +729,13 @@ final class Lexicon {
   /// was lost. A run with no word in it is still letters too ("LS-EEND").
   private func holdsHyphenatedWord(_ word: String) -> Bool {
     guard word.contains("-") else { return false }
+    let parts = word.split(separator: "-")
+    guard parts.count <= Lexicon.longestHyphenatedRun else { return false }
     if word.hasPrefix("-") {
       let rest = word.dropFirst()
-      return !((2...3).contains(rest.count) && reads(rest.lowercased()))
+      return !((2...3).contains(rest.count) && rest.allSatisfy(\.isLetter) && reads(rest.lowercased()))
     }
-    return word.split(separator: "-").contains { $0.count > 3 && reads($0.lowercased()) }
+    return parts.contains { $0.count > 3 && (golds[String($0)] != nil || listsWord($0.lowercased())) }
   }
 
   private func isKnown(_ word: String) -> Bool {

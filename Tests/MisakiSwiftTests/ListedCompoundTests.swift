@@ -151,6 +151,8 @@ struct ListedCompoundTests {
       ("A blu-ray disc.", "ɐ blˈuɹˌA dˈɪsk.", "ɐ blˈuːɹˌA dˈɪsk."),
       ("A Blu-Ray Disc.", "ɐ blˈuɹˌA dˈɪsk.", "ɐ blˈuːɹˌA dˈɪsk."),
       ("The ku-band dish.", "ðə kˈAjubˌænd dˈɪʃ.", "ðə kˈAjuːband dˈɪʃ."),
+      // A key set in capitals, in lower case: was `ˈɛmzdˈuz`.
+      ("The ms-dos prompt.", "ði ˌɛmˌɛsdˈɔs pɹˈɑmpt.", "ði ˌɛmˌɛsdˈɒs pɹˈɒmpt."),
       ("Neo-Nazi groups marched.", "nˌiOnˈɑtsi ɡɹˈups mˈɑɹʧt.", "nˌiːQnˈɑːtsi ɡɹˈuːps mˈɑːʧt."),
       ("Al-Qaeda claimed it.", "ælkˈIdə klˈAmd ɪt.", "alkˈIdə klˈAmd ɪt.")
     ])
@@ -218,13 +220,41 @@ struct ListedCompoundTests {
   /// A run of capitals with a hyphen in it is a letter run only when it holds
   /// no word of four letters or more. Before, the lexicon took any such run
   /// for letters and spelled every part: "POST-BELLUM" was
-  /// `pˌiˌOˌɛstˌibˌiˌiˌɛlˌɛljˌuˈɛm`, "NON-SPEECH" fourteen letters, and
+  /// `pˌiˌOˌɛstˌibˌiˌiˌɛlˌɛljˌuˈɛm`, "NON-SPEECH" nine letters, and
   /// "COVID-19" `sˌiˌOvˌiˌIdˈi nˌIntˈin`, since "COVID-" was such a run.
   @Test func anUnlistedCompoundInCapitalsReadsByItsParts() {
     Self.expectReadings([
       ("THE POST-BELLUM SOUTH WAS POOR.", "ðə pˌOstbˈɛləm sˈWθ wˈʌz pˈʊɹ.", "ðə pˌQstbˈɛləm sˈWθ wˈɒz pˈɔː."),
       ("NON-SPEECH data is used.", "nˌɑnspˈiʧ dˈATə ɪz jˈuzd.", "nˌɒnspˈiːʧ dˈAtə ɪz jˈuːzd."),
-      ("COVID-19 cases rose.", "kˈOvˌɪd nˌIntˈin kˈAsᵻz ɹˈOz.", "kˈQvɪd nˌIntˈiːn kˈAsɪz ɹˈQz.")
+      ("COVID-19 cases rose.", "kˈOvˌɪd nˌIntˈin kˈAsᵻz ɹˈOz.", "kˈQvɪd nˌIntˈiːn kˈAsɪz ɹˈQz."),
+      // Gold lists it in capitals alone, which counts: was N-A-S-D-A-Q.
+      ("The NASDAQ-100 fell.", "ðə nˈæzdˌæk wˈʌn hˈʌndɹəd fˈɛl.", "ðə nˈazdak wˈʌn hˈʌndɹəd fˈɛl.")
+    ])
+  }
+
+  /// The rule judges a run of at most seven parts, gold's longest key. A
+  /// longer one is the letter run it always was, which is what bounds the
+  /// group's part-by-part walk: 400 such parts took 59 s as words. The
+  /// apostrophes keep the run in one subtoken group.
+  @Test func aRunLongerThanAnyCompoundIsStillLetters() {
+    let seven = "POST'-WELL'-MADE'-SELF'-KNOWN'-FAST'-SLOW'"
+    Self.expectReadings([
+      ("They said \(seven) again.",
+       "ðˌA sˈɛd pˈOstwˌɛlmˌAdsˌɛlfnˈOnfˈæstslˈO əɡˈɛn.", "ðˌA sˈɛd pˈQstwˌɛlmˌAdsˌɛlfnˈQnfˈɑːstslˈQ əɡˈɛn."),
+      ("They said \(seven)-BLUE' again.",
+       "ðˌA sˈɛd pˌiˌOˌɛstˌidˌʌbᵊljuˌiˌɛlˌɛlˌɛmˌAdˌiˌiˌɛsˌiˌɛlˌɛfkˌAˌɛnˌOdˌʌbᵊljuˌɛnˌɛfˌAˌɛstˌiˌɛsˌɛlˌOdˌʌbᵊljubˌiˌɛljˌuˈi əɡˈɛn.",
+       "ðˌA sˈɛd pˌiːˌQˌɛstˌiːdˌʌbᵊljuːˌiːˌɛlˌɛlˌɛmˌAdˌiːˌiːˌɛsˌiːˌɛlˌɛfkˌAˌɛnˌQdˌʌbᵊljuːˌɛnˌɛfˌAˌɛstˌiːˌɛsˌɛlˌQdˌʌbᵊljuːbˌiːˌɛljˌuːˈiː əɡˈɛn.")
+    ])
+  }
+
+  /// "GAAP" is in no tier and was spelled (`ʤˌiˌAˌApˈi`); it is gold's "gap".
+  /// "Non-GAAP" reached that reading through the fallback, which read the
+  /// whole group (`nˌɑnɡˈæp`, British `nɒnɡˈɑːp`), until what follows "non-"
+  /// came to read as it reads alone. The entry is what keeps it a word.
+  @Test func gaapIsTheWordAloneAndAfterNon() {
+    Self.expectReadings([
+      ("GAAP earnings rose.", "ɡˈæp ˈɜɹnɪŋz ɹˈOz.", "ɡˈap ˈɜːnɪŋz ɹˈQz."),
+      ("Non-GAAP earnings rose.", "nˌɑnɡˈæp ˈɜɹnɪŋz ɹˈOz.", "nˌɒnɡˈap ˈɜːnɪŋz ɹˈQz.")
     ])
   }
 
@@ -239,6 +269,9 @@ struct ListedCompoundTests {
     Self.expectReadings([
       ("non-WI-FI titles", "nˌɑnwˈIfˌI tˈITᵊlz", "nˌɒnwˈIfˌI tˈItᵊlz"),
       ("The non-U-S- markets fell.", "ðə nˌɑnjˌuˈɛs mˈɑɹkəts fˈɛl.", "ðə nˌɒnjˌuːˈɛs mˈɑːkɪts fˈɛl."),
+      // Before a capital the same acronym keeps its period: "-U-S", three
+      // characters that read through a stem, is still no initialism (`nˌɑnˈus.`).
+      ("The non-U-S. Markets fell.", "ðə nˌɑnjˌuˈɛs. mˈɑɹkəts fˈɛl.", "ðə nˌɒnjˌuːˈɛs. mˈɑːkɪts fˈɛl."),
       ("The non-ANE hardware.", "ðə nˌɑnˌAˌɛnˈi hˈɑɹdwˌɛɹ.", "ðə nˌɒnˌAˌɛnˈiː hˈɑːdwɛː."),
       ("The non-A shares rose.", "ðə nˈɑnˌA ʃˈɛɹz ɹˈOz.", "ðə nˈɒnˌA ʃˈɛːz ɹˈQz."),
       ("A pro-NATO stance.", "ɐ pɹˌOnˈATO stˈæns.", "ɐ pɹˌQnˈAtQ stˈɑːns.")
@@ -260,6 +293,8 @@ struct ListedCompoundTests {
       ("An anti-ICE protest.", "ɐn ˌæntIˌIsˌiˈi pɹˈOtˌɛst.", "ɐn ˌantiˌIsˌiːˈiː pɹˈQtɛst."),
       ("The pre-CO2 era.", "ðə pɹˈi sˌiˈO tˈu ˈɛɹə.", "ðə pɹˈiː sˌiːˈQ tˈuː ˈɪəɹə."),
       ("OpenELM-270M works.", "ˈOpᵊn ˌiˌɛlˈɛm tˈu sˈɛvənti ˈɛm wˈɜɹks.", "ˈQpᵊn ˌiːˌɛlˈɛm tˈuː sˈɛvnti ˈɛm wˈɜːks."),
+      // A stem is no listing: "simd" reads as "sim" and a past tense.
+      ("A SIMD-128 register.", "ɐ ˌɛsˌIˌɛmdˈi wˈʌn twˈɛnti ˈAt ɹˈɛʤəstəɹ.", "ɐ ˌɛsˌIˌɛmdˈiː wˈʌn twˈɛnti ˈAt ɹˈɛʤɪstə."),
       ("They said MIA-MIA again.", "ðˌA sˈɛd ˌɛmˌIˌAˌɛmˌIˈA əɡˈɛn.", "ðˌA sˈɛd mˈIəmˌIə əɡˈɛn."),
       ("They said X-QRS again.", "ðˌA sˈɛd ˌɛkskjˌuˌɑɹˈɛs əɡˈɛn.", "ðˌA sˈɛd ˌɛkskjˌuːˌɑːˈɛs əɡˈɛn."),
       ("See QX-ZVKJ.md today.", "sˈi kjˌuˌɛkszˌivˌikˌAʤˈA.ˈɛmd tədˈA.", "sˈiː kjˌuːˌɛkszˌiːvˌiːkˌAʤˈA.ˈɛmd tədˈA."),
