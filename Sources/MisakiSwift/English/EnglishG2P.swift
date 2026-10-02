@@ -869,8 +869,22 @@ final public class EnglishG2P {
     // dropped it — fusing the two words with no separator at all. Article text
     // is mostly line breaks, so this fired constantly. Any non-empty whitespace
     // run collapses to exactly one space, which IS in the vocab (id 16).
+    //
+    // A reading that already ends in a space takes no second one. A group
+    // whose last subtoken was emptied ends that way ("1st" is "1" read
+    // "first" and an emptied "st", and `mergeTokens` puts a space before
+    // each), so "1st two" came out `fˈɜɹst  tˈu`. Two spaces are two tokens,
+    // and Kokoro reads the pair as a phrase break: rendered on the CoreML
+    // chain, "the 1950s  were" held its /z/ for 500 ms where one space gave
+    // 25. Upstream drops the space inside `merge_tokens` instead, by testing
+    // the phonemes for truthiness. That is not taken here because the same
+    // space is all that separates "5th" from "-order", which would fuse.
     let result = finalTokens
-      .map { ($0.phonemes ?? self.unk) + ($0.whitespace.isEmpty ? "" : " ") }
+      .map { token in
+        let phonemes = token.phonemes ?? self.unk
+        let endsInSpace = phonemes.last?.isWhitespace == true
+        return phonemes + (token.whitespace.isEmpty || endsInSpace ? "" : " ")
+      }
       .joined()
       .trimmingCharacters(in: .whitespacesAndNewlines)
     return (result, finalTokens)
