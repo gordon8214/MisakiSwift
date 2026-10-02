@@ -33,7 +33,9 @@ final class Lexicon {
   init(british: Bool) {
     self.british = british
     // Load and grow dictionaries
+    let truncated = Lexicon.truncatedCompoundGolds(british: british)
     let rawGolds = DataResourcesUtil.loadGold(british: british)
+      .filter { !truncated.contains($0.key) }
       .merging(Lexicon.supplementalGolds(british: british)) { _, supplement in supplement }
     let rawSilvers = DataResourcesUtil.loadSilver(british: british)
     self.golds = Lexicon.growDictionary(rawGolds)
@@ -41,6 +43,28 @@ final class Lexicon {
     self.contractions = ContractionClitics(golds: self.golds)
   
     self.vocab = british ? Lexicon.gbVocab : Lexicon.usVocab
+  }
+
+  /// Gold compound entries that read fewer syllables than they spell, by the
+  /// key the resource lists them under. Most lost a part outright:
+  /// "Sub-Boreal" is `bˈɔːɹɪəl` ("boreal"), "Schleswig-Holstein" `hˈɒlstIn`,
+  /// "post-bellum" `bˈɛləm`, American "washer-dryer" `wˈɔʃəɹ`. "post-chaises"
+  /// carries its singular's reading and "muckety-muck" that of "muck-a-muck".
+  ///
+  /// Withdrawn rather than repaired: without its entry each reads part by
+  /// part, in full, and there is no measured reading to put in its place.
+  /// They were reachable all along, wherever the tagger let a hyphen stay in
+  /// its group ("The post-bellum South." read `ðə bˈɛləm sˈWθ`), and
+  /// `joinsListedCompound` would reach the ones with an unreadable part
+  /// everywhere. Found by counting the vowels of every hyphenated gold entry
+  /// against its part-by-part reading.
+  static func truncatedCompoundGolds(british: Bool) -> Set<String> {
+    british
+      ? [
+        "Benue-Congo", "Hubli-Dharwar", "Pretoria-Witwatersrand-Vereeniging", "Schleswig-Holstein",
+        "Sub-Boreal", "concavo-concave", "muckety-muck", "post-bellum", "post-chaises"
+      ]
+      : ["washer-dryer"]
   }
 
   static func supplementalGolds(british: Bool) -> [String: Any] {
@@ -126,6 +150,19 @@ final class Lexicon {
         }
       } else if k == k.lowercased().capitalized {
         e[k.lowercased()] = v
+      } else {
+        continue
+      }
+
+      // `capitalized` raises every part of a hyphenated key ("sci-fi" to
+      // "Sci-Fi"), where upstream's `capitalize()` raises the first alone.
+      // That is the casing that opens a sentence ("Sci-fi is back."), and
+      // `getWord` folds only an unhyphenated word to lower case, so a
+      // compound needs the key itself. Where the dictionary lists both
+      // casings the lower-case entry supplies it, whichever is met first.
+      let lower = k.lowercased()
+      if k.contains("-"), k == lower || d[lower] == nil {
+        e[lower.prefix(1).uppercased() + lower.dropFirst()] = v
       }
     }
     
@@ -344,6 +381,30 @@ final class Lexicon {
   /// reaching it only through a stemmer.
   func listsWord(_ word: String) -> Bool {
     golds[word] != nil || silvers[word] != nil
+  }
+
+  /// Whether `getWord` reads the hyphenated `compound` whole, from an entry
+  /// for the compound itself: in the casing it is written in, a variant
+  /// `growDictionary` made of it, or its lower case under a run of capitals
+  /// ("SCI-FI"). That last fold is `lookup`'s, which spells a reading with no
+  /// primary stress letter by letter when the tag is NNP, so one is required.
+  func listsCompound(_ compound: String) -> Bool {
+    if golds[compound] != nil || silvers[compound] != nil { return true }
+    guard compound == compound.uppercased(),
+          compound.unicodeScalars.allSatisfy({ Lexicon.lexiconOrdinals.contains(Int($0.value)) }),
+          let reading = golds[compound.lowercased()] as? String else { return false }
+    return reading.contains(Lexicon.primaryStress)
+  }
+
+  /// Whether the lexicon reads `word` by itself, from an entry or a stem,
+  /// rather than leaving it to the fallback network. An unlisted run of
+  /// capitals comes back spelled letter by letter (`getNNP`), which is not a
+  /// reading of the word, so it is judged in lower case.
+  func reads(_ word: String) -> Bool {
+    guard getWord(word, tag: .none, stress: nil, ctx: TokenContext()).phoneme != nil else { return false }
+    let lower = word.lowercased()
+    if word.count > 1, word != lower, word == word.uppercased(), golds[word] == nil { return reads(lower) }
+    return true
   }
 
   /// Whether gold lists `token`'s capitals with a reading of their own that

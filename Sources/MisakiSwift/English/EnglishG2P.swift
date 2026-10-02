@@ -584,18 +584,22 @@ final public class EnglishG2P {
           // makes Kokoro's duration predictor insert a perceptible pause,
           // which is what upstream Python misaki avoids. Treat these as
           // zero-phoneme joiners; real em/en dashes still pause.
-          if isWordJoiningHyphen(
+          if !isWordJoiningHyphen(
             subtoken: token,
             subtokens: subtokens,
             subtokenIndex: j,
             outerTokens: tokens,
             outerIndex: i
           ) {
-            token.phonemes = ""
-          } else {
             token.phonemes = "—"
+            token.`_`.rating = 3
+          } else if subtokens.count > 1 || !joinsListedCompound(tokens, at: i) {
+            token.phonemes = ""
+            token.`_`.rating = 3
           }
-          token.`_`.rating = 3
+          // Otherwise the hyphen is left unread, so it joins its neighbours'
+          // group and the compound is looked up whole. See
+          // `joinsListedCompound`.
         // `Lexicon.symbolSet[token.text] == nil` keeps symbols that have a
         // spoken word form — % & + @ — out of this branch. NLTagger tags them
         // as punctuation, and neither `punctuationTagPhonemes` nor
