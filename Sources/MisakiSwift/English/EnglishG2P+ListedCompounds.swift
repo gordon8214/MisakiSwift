@@ -33,18 +33,33 @@ extension EnglishG2P {
   /// The run of words around the hyphen is cut into listed compounds from the
   /// left, longest first, so the answer for one hyphen agrees with the answer
   /// for its neighbours: every hyphen kept lies inside one compound, and the
-  /// hyphen between two compounds is not kept. Each subtoken group is then a
-  /// single listed compound, which the merged lookup reads.
+  /// hyphen between two compounds is not kept, so no subtoken group holds two
+  /// of them. A clitic or a mark glued to the compound shares its group, as
+  /// it shares any word's.
+  ///
+  /// A run of more words than `longestCompound` is not searched, and the walk
+  /// stops as soon as it has counted that many: every hyphen of such a run
+  /// counts past the bound, from either side, so they still agree, and a
+  /// pathological run costs each hyphen a bounded walk instead of the whole
+  /// run (a 3,000-word run took 37 s).
   func joinsListedCompound(_ tokens: [MToken], at index: Int) -> Bool {
     guard isCompoundHyphen(tokens, at: index) else { return false }
 
     // The words of the run: every second token, out from the hyphen.
+    let bound = EnglishG2P.longestCompound
     var first = index - 1
-    while first >= 2, isCompoundHyphen(tokens, at: first - 1) { first -= 2 }
     var last = index + 1
-    while last + 2 < tokens.count, isCompoundHyphen(tokens, at: last + 1) { last += 2 }
+    var count = 2
+    while count <= bound, first >= 2, isCompoundHyphen(tokens, at: first - 1) {
+      first -= 2
+      count += 1
+    }
+    while count <= bound, last + 2 < tokens.count, isCompoundHyphen(tokens, at: last + 1) {
+      last += 2
+      count += 1
+    }
+    guard count <= bound else { return false }
     let words = Array(stride(from: first, through: last, by: 2))
-    guard words.count <= EnglishG2P.longestCompound else { return false }
 
     var start = 0
     while start < words.count - 1 {

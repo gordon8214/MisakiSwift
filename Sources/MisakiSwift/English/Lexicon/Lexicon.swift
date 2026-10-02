@@ -53,6 +53,9 @@ final class Lexicon {
   ///
   /// Withdrawn rather than repaired: without its entry each reads part by
   /// part, in full, and there is no measured reading to put in its place.
+  /// (Set in capitals, an unlisted compound whose hyphen the tagger leaves in
+  /// its group is spelled, as any such compound is: `isKnown` takes a run of
+  /// capitals for a letter run.)
   /// They were reachable all along, wherever the tagger let a hyphen stay in
   /// its group ("The post-bellum South." read `ðə bˈɛləm sˈWθ`), and
   /// `joinsListedCompound` would reach the ones with an unreadable part

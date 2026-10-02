@@ -577,6 +577,11 @@ final public class EnglishG2P {
           currency = token.text
           token.phonemes = ""
           token.`_`.rating = 4
+        } else if token.text == "-", subtokens.count == 1, joinsListedCompound(tokens, at: i) {
+          // Left unread, so it joins its neighbours' group and the compound
+          // is looked up whole. Decided by the text and not the tag: spaCy
+          // calls most intra-word hyphens HYPH, but some `:` ("Hi-Fi is
+          // back."), which is punctuation here and would stand alone too.
         } else if token.tag == .dash || (token.tag == .punctuation && token.text == "–") {
           // A run of ASCII hyphens that sits directly between two
           // alphanumeric tokens is a word-joining hyphen (e.g. "on-device",
@@ -584,22 +589,18 @@ final public class EnglishG2P {
           // makes Kokoro's duration predictor insert a perceptible pause,
           // which is what upstream Python misaki avoids. Treat these as
           // zero-phoneme joiners; real em/en dashes still pause.
-          if !isWordJoiningHyphen(
+          if isWordJoiningHyphen(
             subtoken: token,
             subtokens: subtokens,
             subtokenIndex: j,
             outerTokens: tokens,
             outerIndex: i
           ) {
-            token.phonemes = "—"
-            token.`_`.rating = 3
-          } else if subtokens.count > 1 || !joinsListedCompound(tokens, at: i) {
             token.phonemes = ""
-            token.`_`.rating = 3
+          } else {
+            token.phonemes = "—"
           }
-          // Otherwise the hyphen is left unread, so it joins its neighbours'
-          // group and the compound is looked up whole. See
-          // `joinsListedCompound`.
+          token.`_`.rating = 3
         // `Lexicon.symbolSet[token.text] == nil` keeps symbols that have a
         // spoken word form — % & + @ — out of this branch. NLTagger tags them
         // as punctuation, and neither `punctuationTagPhonemes` nor

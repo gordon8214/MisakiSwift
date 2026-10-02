@@ -51,10 +51,47 @@ struct ListedCompoundTests {
     ])
   }
 
+  /// The rule reads the hyphen's text, not its tag. spaCy calls most
+  /// intra-word hyphens HYPH but these two `:`, which is punctuation here, so
+  /// a rule under the dash tag alone left them standing apart: "Hi-Fi is
+  /// back." stayed `hˈIfˈI` / `hˈIfˈiː`, and "TICK-TOCK" read "tick" and then
+  /// spelled T-O-C-K (`tˈɪktˌiˌOsˌikˈA`).
+  @Test func aHyphenTheTaggerCallsPunctuationIsStillInsideItsCompound() {
+    Self.expectReadings([
+      ("Hi-Fi is back.", "hˈIfˌI ɪz bˈæk.", "hˈIfI ɪz bˈak."),
+      ("I like TICK-TOCK today.", "ˌI lˈIk tˈɪktˌɑk tədˈA.", "ˌI lˈIk tˈɪktɒk tədˈA.")
+    ])
+  }
+
+  /// A compound of three parts: the run is walked both ways from each hyphen
+  /// and cut longest first. Before: `kˈOˈInˈʊɹ` / `kˈQˈInˈʊə`, `bɹˈɪkɐbɹˈæk` /
+  /// `bɹˈɪkɐbɹˈak` and `tˈɪktˈæktˈO` / `tˈɪktˈaktˈQ`. British gold lists
+  /// "tic-tac" as well, so its column is the one that fails shortest-first.
+  @Test func aCompoundOfThreePartsIsReadWhole() {
+    Self.expectReadings([
+      ("The Koh-i-noor diamond.", "ðə kˌOinˈʊɹ dˈIəmənd.", "ðə kˈQɪnˌʊə dˈIəmənd."),
+      ("A bric-a-brac shop.", "ɐ bɹˈɪkəbɹˌæk ʃˈɑp.", "ɐ bɹˈɪkəbɹak ʃˈɒp."),
+      ("A game of tic-tac-toe.", "ɐ ɡˈAm ʌv tˌɪktˌæktˈO.", "ɐ ɡˈAm ɒv tɪktaktˈQ.")
+    ])
+  }
+
+  /// A run of more words than gold's longest compound is not searched, so
+  /// the walk is bounded: seven words find "sci-fi" at their end, eight read
+  /// as they did before.
+  @Test func aRunLongerThanAnyCompoundIsNotSearched() {
+    Self.expectReadings([
+      ("two-three-four-five-six-sci-fi stuff.",
+       "tˈuθɹˈifˈɔɹfˈIvsˈɪkssˈIfˌI stˈʌf.", "tˈuːθɹˈiːfˈɔːfˈIvsˈɪkssˈIfI stˈʌf."),
+      ("one-two-three-four-five-six-sci-fi stuff.",
+       "wˈʌntˈuθɹˈifˈɔɹfˈIvsˈɪkssˈIfˈi stˈʌf.", "wˈʌntˈuːθɹˈiːfˈɔːfˈIvsˈɪkssˈIfˈiː stˈʌf.")
+    ])
+  }
+
   /// A clitic, and a hyphen that joins the compound to something else, are
-  /// outside it. "Non-sci-fi" was `nɑnsˈifˈi`: one group, read whole by the
-  /// fallback. The hyphen after "Non" is not inside a listed compound, so it
-  /// still separates.
+  /// outside it: the hyphen after "Sci-Fi" in "Sci-Fi-inspired" still
+  /// separates. "Non-sci-fi" was `nɑnsˈifˈi`, one group read whole by the
+  /// fallback, because the tagger leaves its first hyphen in the group; the
+  /// compound in it is now found, and "Non-" reads from gold's prefix entry.
   @Test func theCompoundKeepsItsNeighbours() {
     Self.expectReadings([
       ("Sci-Fi's golden age.", "sˈIfˌIz ɡˈOldən ˈAʤ.", "sˈIfIz ɡˈQldᵊn ˈAʤ."),
@@ -83,7 +120,8 @@ struct ListedCompoundTests {
       for listed in ["sci-fi", "Sci-Fi", "Sci-fi", "SCI-FI", "Wi-Fi", "wi-fi", "Wi-fi", "long-term"] {
         #expect(lexicon.listsCompound(listed), "\(listed) should be listed")
       }
-      for unlisted in ["on-device", "sci-Fi", "ABC-DEF"] {
+      // "RE-" folds to gold's prefix `re-`, which carries no primary stress.
+      for unlisted in ["on-device", "sci-Fi", "ABC-DEF", "RE-"] {
         #expect(!lexicon.listsCompound(unlisted), "\(unlisted) should not be listed")
       }
       for read in ["long", "term", "Long", "hi", "T", "NASA"] {
@@ -106,6 +144,22 @@ struct ListedCompoundTests {
       ("We bought a washer-dryer.", "wˌi bˈɔt ɐ wˈɔʃəɹdɹˈIəɹ.", "wˌiː bˈɔːt ɐ wˈɒʃədɹˈIə."),
       ("In Schleswig-Holstein today.", "ɪn ʃlˈɛzwɪɡhˈOlstˌIn tədˈA.", "ɪn ʃlˈɛsvɪɡhˈɒlstIn tədˈA.")
     ])
+  }
+
+  /// No casing of a withdrawn entry is listed, in either lexicon it was
+  /// withdrawn from. The readings above cannot show this for an entry whose
+  /// parts all read, which was never read whole in those sentences.
+  @Test func aWithdrawnEntryIsUnlistedInEveryCasing() {
+    for british in [false, true] {
+      let lexicon = Lexicon(british: british)
+      for key in Lexicon.truncatedCompoundGolds(british: british) {
+        let lower = key.lowercased()
+        let casings = [key, lower, lower.capitalized, lower.prefix(1).uppercased() + lower.dropFirst(), key.uppercased()]
+        for casing in casings {
+          #expect(!lexicon.listsCompound(casing), "\(casing) is still listed")
+        }
+      }
+    }
   }
 
   /// Each withdrawn entry is still in the resource and still short, so a
