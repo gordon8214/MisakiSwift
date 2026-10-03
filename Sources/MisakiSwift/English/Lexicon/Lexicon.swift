@@ -1109,7 +1109,8 @@ final class Lexicon {
                 let tail = num.dropFirst().compactMap { Int(String($0)) }.map { num2Words.convert(Decimal($0)) }.joined(separator: " ")
                 word = "point " + tail
             } else {
-              if let d = Double(num) { word = num2Words.convert(Decimal(d)) }
+              // From its digits, never through a `Double`: see `convert(decimalText:)`.
+              if let spelled = num2Words.convert(decimalText: num) { word = spelled }
             }
         }
         

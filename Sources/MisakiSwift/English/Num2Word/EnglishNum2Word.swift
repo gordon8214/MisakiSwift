@@ -205,23 +205,58 @@ struct EnglishNum2Word {
     }
   }
   
+  /// A `Decimal` prints as its exact digits, and those are what is read. The
+  /// whole part used to be taken with `NSDecimalNumber.intValue` and the
+  /// fraction as what was left after subtracting it. `intValue` is wrong for
+  /// a mantissa of 2^63 or more (3.14159265358979323846 gave 0), and a
+  /// negative remainder printed "-0.5", whose "." was read as a digit: -2.5
+  /// was "minus two point zero five".
+  ///
+  /// A value the reader refuses has no reading. That is a whole part past
+  /// `Int`, where `intValue` used to answer: with the digits of another
+  /// number, or `Int.min`, on which `toCardinal` traps ("1.2.1" and 63 zeros
+  /// did, as one part of a dotted run).
   private func toDecimal(_ number: Decimal) -> String {
-    let integerPart = NSDecimalNumber(decimal: number).intValue
-    let fractionalPart = number - Decimal(integerPart)
-    
-    if fractionalPart == 0 {
-      return toCardinal(integerPart)
-    }
-    
-    let integerWords = toCardinal(integerPart)
-    
-    // Remove "0."
-    let fractionalString = "\(fractionalPart)".dropFirst(2)
-    let fractionalWords = fractionalString.map { toCardinal(Int(String($0)) ?? 0) }.joined(separator: " ")
-    
-    return "\(integerWords) \(pointWord) \(fractionalWords)"
+    let digits = "\(number)"
+    let unsigned = digits.hasPrefix("-") ? String(digits.dropFirst()) : digits
+    guard let words = convert(decimalText: unsigned) else { return "" }
+    return unsigned.count == digits.count ? words : negWord + words
   }
-  
+
+  /// The digits of a fraction that are read. BetterFeeds spells a fraction of
+  /// up to this many digits itself and leaves a longer one in digits so that
+  /// it is not expanded; "pi is 3." and 200,000 digits is a real page. Read
+  /// by value, a fraction stopped at the eighteen or so digits a `Double`
+  /// made of it, the last of them wrong.
+  static let maximumFractionDigits = 24
+
+  /// Reads an unsigned decimal from its text: the whole part as a cardinal,
+  /// then "point" and each digit of the fraction as it is written, a trailing
+  /// zero included, up to `maximumFractionDigits`. Nil for text that is not
+  /// digits around at most one point, or whose whole part is past `Int`.
+  ///
+  /// The lexicon used to read a decimal by value, as `Decimal(Double(text))`.
+  /// That conversion is inexact for about one two-digit fraction in seven, so
+  /// "6.77" arrived as 6.769999999999998976 and was read with all eighteen
+  /// digits. Where the mantissa it made reaches 2^63, `toDecimal` took the
+  /// whole part wrong as well: "14.96" was "minus three point zero nine six
+  /// zero zero…", "1.06" opened on "zero". By value a written zero was also
+  /// lost, "3.10" reading as "three point one" does. Upstream misaki reads
+  /// through a float too and drops that zero; it is kept here.
+  func convert(decimalText text: String) -> String? {
+    // Held to the ten ASCII digits. `Int` alone would take a sign and then
+    // lose it on "-0.5", so the caller says "minus".
+    func isDigits(_ run: Substring) -> Bool { run.allSatisfy { $0.isASCII && $0.isWholeNumber } }
+
+    let parts = text.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+    guard isDigits(parts[0]), let whole = Int(parts[0]) else { return nil }
+    guard parts.count == 2, !parts[1].isEmpty else { return toCardinal(whole) }
+    guard isDigits(parts[1]) else { return nil }
+
+    let fraction = parts[1].prefix(Self.maximumFractionDigits).compactMap(\.wholeNumberValue).map(toCardinal)
+    return ([toCardinal(whole), pointWord] + fraction).joined(separator: " ")
+  }
+
   /// Converts a number representing year, oridnal number or a decimal (integer numbers included) to words
   func convert(_ number: Decimal, to format: ConversionFormat = .decimal) -> String {
     switch format {
