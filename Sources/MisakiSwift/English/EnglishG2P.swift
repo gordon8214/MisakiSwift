@@ -235,14 +235,25 @@ final public class EnglishG2P {
       // silently dropped trailing words ("hi 😀 [Misaki](/misˈɑki/) now" lost
       // "now") and could walk past the end and trap outright
       // ("😀😀😀😀😀[a](/b/)" → "String index is out of bounds").
-      guard let converted = Range(m.range, in: input) else { return }
+      guard let converted = Range(m.range, in: input),
+            let label = Range(m.range(at: 1), in: input) else { return }
       let start = converted.lowerBound
       let end = converted.upperBound
 
       result += String(input[lastEnd..<start])
       tokens.append(contentsOf: String(input[lastEnd..<start]).split(separator: " ").map(String.init))
 
-      let grapheme = ns.substring(with: m.range(at: 1))
+      // The label is copied out of `input`, as native text. An empty string
+      // adopts the first thing appended to it, storage and all, and what
+      // `NSString.substring` hands back is bridged UTF-16. A span that opened
+      // the text therefore left `result` in UTF-16 for that one append, and
+      // the span's end was recorded as a UTF-16 offset in a string that is
+      // UTF-8 from the next append on. Two indices compare by raw offset, and
+      // any non-ASCII character in the label makes the two offsets differ:
+      // "[El Niño](/ɛl nˈinjO/) year." put the end one unit short, "Niño"
+      // fell outside its own span, and it was read twice
+      // (`ɛl nˈinjO nˈinjO jˈɪɹ.`).
+      let grapheme = String(input[label])
       let phoneme = ns.substring(with: m.range(at: 2))
       
       let tokenStartIndex = result.endIndex
@@ -329,6 +340,15 @@ final public class EnglishG2P {
         return true
       }
     }
+
+    // A span that shares a token with other text is cut out of it first, so
+    // the alignment below hands its reading to the span alone.
+    mutableTokens = cutTokens(
+      mutableTokens,
+      at: preprocessedText.features,
+      in: preprocessedText.text,
+      pennTags: &pennTags
+    )
 
     // Align features to tokens. NLTagger's `.word` unit splits hyphenated or
     // mixed-class graphemes such as "COVID-19" into multiple subtokens
