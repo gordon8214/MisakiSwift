@@ -870,27 +870,62 @@ final public class EnglishG2P {
     // is mostly line breaks, so this fired constantly. Any non-empty whitespace
     // run collapses to exactly one space, which IS in the vocab (id 16).
     //
-    // A reading that already ends in a space takes no second one. A group
-    // whose last subtoken was emptied ends that way ("1st" is "1" read
-    // "first" and an emptied "st", and `mergeTokens` puts a space before
-    // each), so "1st two" came out `fˈɜɹst  tˈu`. Two spaces are two tokens,
-    // and Kokoro reads the pair as a phrase break: rendered on the CoreML
-    // chain, "the 1950s  were" held its /z/ for 500 ms where one space gave
-    // 25. Upstream drops the space inside `merge_tokens` instead, by testing
-    // the phonemes for truthiness. That is not taken here because the same
-    // space is all that separates "5th" from "-order", which would fuse.
+    // A space is never added after a space. Two are two tokens, and Kokoro
+    // reads the pair as a phrase break: rendered on the CoreML chain, "the
+    // 1950s  were" held its /z/ for 500 ms where one space gave 25. There
+    // were two ways to a pair, and upstream has the second as well.
+    //
+    // A reading that ends in a space. A group whose last subtoken was emptied
+    // ends that way ("1st" is "1" read "first" and an emptied "st", and
+    // `mergeTokens` puts a space before each), so "1st two" came out
+    // `fˈɜɹst  tˈu`. Upstream drops that space inside `merge_tokens`, by
+    // testing the phonemes for truthiness. That is not taken here because the
+    // same space is all that separates "5th" from "-order", which would fuse.
+    //
+    // A token with no reading. A backtick, a brace or "--" standing between
+    // two spaces is erased, and the space before it and its own made a pair:
+    // "the ` slash chunk ` flag" was `ðə  slˈæʃ ʧˈʌŋk  flˈæɡ`. What it leaves
+    // is one separator. A dash spelled in hyphens loses the only break it had
+    // this way ("The market -- which fell -- rose." runs on), and that break
+    // was never the dash's reading: the same pair stood beside every brace.
+    // A caller that wants the dash read has to spell it "—".
     //
     // The test is for the space itself, not for whitespace. A forced reading
     // can end in a tab or a no-break space, which the vocabulary lacks and the
     // tokenizer drops, so the space after it is the only separator it has.
-    let result = finalTokens
-      .map { token in
-        let phonemes = token.phonemes ?? self.unk
-        let endsInSpace = phonemes.hasSuffix(" ")
-        return phonemes + (token.whitespace.isEmpty || endsInSpace ? "" : " ")
+    closeUpBeforeMarks(finalTokens)
+    var result = ""
+    for token in finalTokens {
+      result += token.phonemes ?? self.unk
+      if !token.whitespace.isEmpty, !result.hasSuffix(" ") {
+        result += " "
       }
-      .joined()
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    return (result, finalTokens)
+    }
+    return (result.trimmingCharacters(in: .whitespacesAndNewlines), finalTokens)
+  }
+
+  /// The readings that are a mark and not a word: the pause marks, the quotes
+  /// and the brackets.
+  static let marks: Set<Character> = punctuactions.union(["(", ")"])
+
+  /// Drops the space a group's reading ends in where the next thing read is
+  /// a mark, so the group stands against it as any word does.
+  ///
+  /// That space is the separator an emptied last subtoken leaves ("1990s" is
+  /// `nˈIndiz ` with its "s" emptied), and it is for a word that follows with
+  /// no whitespace of its own. A mark needs none, and "word," has none. A
+  /// group had one: "the 1990s, it" was `nˈIndiz , ɪt` and a sentence ended
+  /// `nˈIndiz .`, a shape upstream never emits, since its `merge_tokens` adds
+  /// no space for an emptied subtoken. A token with no reading is looked past
+  /// ("{in the 1990s}," has a brace there), and where whitespace does stand
+  /// before the mark the join puts its space back.
+  private func closeUpBeforeMarks(_ tokens: [MToken]) {
+    var next: Character?
+    for token in tokens.reversed() {
+      if let phonemes = token.phonemes, phonemes.hasSuffix(" "), let next, EnglishG2P.marks.contains(next) {
+        token.phonemes = String(phonemes.dropLast())
+      }
+      next = token.phonemes?.first ?? next
+    }
   }
 }

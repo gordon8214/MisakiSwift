@@ -1,7 +1,8 @@
 import Testing
 @testable import MisakiSwift
 
-/// A group whose last subtoken was emptied is followed by one space, not two.
+/// Two words are one space apart, and a mark stands against the word before
+/// it, whatever was erased or emptied between them.
 ///
 /// "1st" is two subtokens, "1" and "st". The group is read whole ("first"),
 /// which empties "st", and `mergeTokens` puts a space before every subtoken
@@ -13,8 +14,8 @@ import Testing
 /// Rendered on the bundled CoreML chain over 60 prose lines, one space against
 /// two: the word's last phoneme and the gap took 120 ms and 222 ms on average,
 /// and 3 lines held 200 ms or more of silence there against 14. "the 1950s
-/// were" gave its /z/ 25 ms and 500 ms. Every "before" below was measured at
-/// `86f7f55`.
+/// were" gave its /z/ 25 ms and 500 ms. Every "before" in the first three
+/// tests was measured at `86f7f55`, and in the last four at `146f857`.
 struct GroupTrailingSpaceTests {
 
   private static func expectReadings(_ fixtures: [(text: String, american: String, british: String)]) {
@@ -80,30 +81,91 @@ struct GroupTrailingSpaceTests {
     ])
   }
 
-  /// Three neighbours of this fault that are not it, pinned as they are so
-  /// the rule stays as narrow as it was measured.
+  /// A token with no reading takes no space of its own. Erased between two
+  /// spaces it used to leave both: each row here had a pair where the comment
+  /// marks it, and "15s`" had one for a second reason, a group's own space
+  /// and the backtick's. Rendered on the bundled CoreML chain over 40 such
+  /// lines, the word's last phoneme and the gap took 166 ms with the pair
+  /// and 105 ms without, and the audio held 45 ms of silence there against 22.
   ///
-  /// A token erased between two spaces leaves both of them. For a spaced
-  /// dash, which has no reading, those two spaces are the only break it gets,
-  /// so collapsing them would run the clauses together.
-  ///
-  /// With punctuation after the group, its space stands in front of the
-  /// mark. That lengthens or shortens a pause the writer asked for (a comma's
-  /// by 57 ms of 375 over 18 renders, a full stop's by 28 ms of 465 the other
-  /// way over 22) and adds none.
-  ///
-  /// A group followed at once by a token that is erased takes that token's
-  /// whitespace after its own space, so it still has two.
-  @Test func anErasedTokenAndASpaceBeforePunctuationAreLeftAlone() {
+  /// The dash spelled in hyphens is in this list on purpose. The pair was the
+  /// only break it had (over 40 lines, 108 ms of silence with it and 30 ms
+  /// without), and it is not kept, because it was never the dash's reading:
+  /// the same pair stood beside every brace. A caller spells the dash "—".
+  /// The signed figure is erased whole, a fault of its own that the pair hid
+  /// no better.
+  @Test func aTokenWithNoReadingLeavesOneSpace() {
     Self.expectReadings([
-      ("It took 15s` to run.", "ˌɪt tˈʊk fˌɪftˈinz  tə ɹˈʌn.", "ˌɪt tˈʊk fˌɪftˈiːnz  tə ɹˈʌn."),
-      ("The market -- which fell -- rose.",
-       "ðə mˈɑɹkət  wˌɪʧ fˈɛl  ɹˈOz.", "ðə mˈɑːkɪt  wˌɪʧ fˈɛl  ɹˈQz."),
-      ("It moved -3 today.", "ˌɪt mˈuvd  tədˈA.", "ˌɪt mˈuːvd  tədˈA."),
+      // `ðə  slˈæʃ ʧˈʌŋk  flˈæɡ`.
+      ("Run the ` slash chunk ` flag first.",
+       "ɹˈʌn ðə slˈæʃ ʧˈʌŋk flˈæɡ fˈɜɹst.", "ɹˈʌn ðə slˈaʃ ʧˈʌŋk flˈaɡ fˈɜːst."),
+      // `ɪn  bɹˈAsᵻz  hˈɪɹ`.
+      ("Wrap it in { braces } here.", "ɹˈæp ɪt ɪn bɹˈAsᵻz hˈɪɹ.", "ɹˈap ɪt ɪn bɹˈAsɪz hˈɪə."),
+      // `sˈi  ðə nˈOt  bəlˈO`.
+      ("See [ the note ] below.", "sˈi ðə nˈOt bəlˈO.", "sˈiː ðə nˈQt bɪlˈQ."),
+      // `kˈɔsts  fˈIv`: the sign is erased and its figure reads the currency.
+      ("It costs $ 5 today.", "ˌɪt kˈɔsts fˈIv dˈɑləɹz tədˈA.", "ˌɪt kˈɒsts fˈIv dˈɒləz tədˈA."),
+      // `fˌɪftˈinz  tə`.
+      ("It took 15s` to run.", "ˌɪt tˈʊk fˌɪftˈinz tə ɹˈʌn.", "ˌɪt tˈʊk fˌɪftˈiːnz tə ɹˈʌn."),
+      // `mˈɑɹkət  wˌɪʧ fˈɛl  ɹˈOz`.
+      ("The market -- which fell -- rose.", "ðə mˈɑɹkət wˌɪʧ fˈɛl ɹˈOz.", "ðə mˈɑːkɪt wˌɪʧ fˈɛl ɹˈQz."),
+      // `mˈuvd  tədˈA`.
+      ("It moved -3 today.", "ˌɪt mˈuvd tədˈA.", "ˌɪt mˈuːvd tədˈA.")
+    ])
+  }
+
+  /// A group stands against the mark after it, as any word does. Its space
+  /// is the separator an emptied subtoken leaves, and before a mark it stood
+  /// in front of the mark: `nˈIndiz , ɪt`, `nˈIndiz .`, `nˈIndiz )`,
+  /// `nˈIndiz "` and `nˈIndiz —ænd`, a shape upstream never emits. A brace
+  /// erased between the two is looked past. A forced reading that ends in a
+  /// space closes up the same way. Over 30 rendered lines the mark kept its
+  /// pause: the last phoneme and the gap took 425 ms with the space and 438
+  /// without.
+  @Test func aGroupStandsAgainstTheMarkAfterIt() {
+    Self.expectReadings([
       ("In the 1990s, it was popular.",
-       "ɪn ðə nˌIntˈin nˈIndiz , ɪt wʌz pˈɑpjələɹ.", "ɪn ðə nˌIntˈiːn nˈIntiz , ɪt wɒz pˈɒpjʊlə."),
+       "ɪn ðə nˌIntˈin nˈIndiz, ɪt wʌz pˈɑpjələɹ.", "ɪn ðə nˌIntˈiːn nˈIntiz, ɪt wɒz pˈɒpjʊlə."),
       ("It was popular in the 1990s.",
-       "ˌɪt wʌz pˈɑpjələɹ ɪn ðə nˌIntˈin nˈIndiz .", "ˌɪt wɒz pˈɒpjʊlə ɪn ðə nˌIntˈiːn nˈIntiz .")
+       "ˌɪt wʌz pˈɑpjələɹ ɪn ðə nˌIntˈin nˈIndiz.", "ˌɪt wɒz pˈɒpjʊlə ɪn ðə nˌIntˈiːn nˈIntiz."),
+      ("The decade (the 1990s) was long.",
+       "ðə dˈɛkˌAd (ðə nˌIntˈin nˈIndiz) wʌz lˈɔŋ.", "ðə dˈɛkAd (ðə nˌIntˈiːn nˈIntiz) wɒz lˈɒŋ."),
+      ("He called it \"the 1990s\" again.",
+       "hˌi kˈɔld ɪt \"ðə nˌIntˈin nˈIndiz\" əɡˈɛn.", "hˌiː kˈɔːld ɪt \"ðə nˌIntˈiːn nˈIntiz\" əɡˈɛn."),
+      ("He called it “the 1990s” again.",
+       "hˌi kˈɔld ɪt “ðə nˌIntˈin nˈIndiz” əɡˈɛn.", "hˌiː kˈɔːld ɪt “ðə nˌIntˈiːn nˈIntiz” əɡˈɛn."),
+      ("In the 1990s—and after—it grew.",
+       "ɪn ðə nˌIntˈin nˈIndiz—ænd ˈæftəɹ—ɪt ɡɹˈu.", "ɪn ðə nˌIntˈiːn nˈIntiz—and ˈɑːftə—ɪt ɡɹˈuː."),
+      ("It grew {in the 1990s}, then fell.",
+       "ˌɪt ɡɹˈu ɪn ðə nˌIntˈin nˈIndiz, ðˈɛn fˈɛl.", "ˌɪt ɡɹˈuː ɪn ðə nˌIntˈiːn nˈIntiz, ðˈɛn fˈɛl."),
+      ("A [word](/wˈɜɹd /), next.", "ɐ wˈɜɹd, nˈɛkst.", "ɐ wˈɜɹd, nˈɛkst.")
+    ])
+  }
+
+  /// A mark glued to the group from the other side, which "word(roughly)",
+  /// `word"roughly"` and "word:next" read with no space either: `wˈɜɹd(ɹˈʌfli)`,
+  /// `wˈɜɹd:nˈɛkst`. The group read `nˈIndiz (ɹˈʌfli)` and `fˌɪftˈinz :nˈɛkst`.
+  @Test func aGroupStandsAgainstAGluedMarkAsAWordDoes() {
+    Self.expectReadings([
+      ("The 1990s(roughly) were long.",
+       "ðə nˌIntˈin nˈIndiz(ɹˈʌfli) wɜɹ lˈɔŋ.", "ðə nˌIntˈiːn nˈIntiz(ɹˈʌfli) wɜː lˈɒŋ."),
+      ("The 1990s“roughly” were long.",
+       "ðə nˌIntˈin nˈIndiz“ɹˈʌfli” wɜɹ lˈɔŋ.", "ðə nˌIntˈiːn nˈIntiz“ɹˈʌfli” wɜː lˈɒŋ."),
+      ("It took 15s:next and more.",
+       "ˌɪt tˈʊk fˌɪftˈinz:nˈɛkst ænd mˈɔɹ.", "ˌɪt tˈʊk fˌɪftˈiːnz:nˈɛkst and mˈɔː.")
+    ])
+  }
+
+  /// Where that space is still the separator, and where a space was typed.
+  /// A word after an erased bracket has no whitespace before it, so the
+  /// group's space is all that keeps the two apart. A space the writer put
+  /// in front of a mark is the writer's, after a group as after any word.
+  @Test func theSpaceBeforeAWordOrATypedSpaceIsKept() {
+    Self.expectReadings([
+      ("In the 1990s[note] it grew.",
+       "ɪn ðə nˌIntˈin nˈIndiz nˈOt ɪt ɡɹˈu.", "ɪn ðə nˌIntˈiːn nˈIntiz nˈQt ɪt ɡɹˈuː."),
+      ("The 1990s , it seems.", "ðə nˌIntˈin nˈIndiz , ɪt sˈimz.", "ðə nˌIntˈiːn nˈIntiz , ɪt sˈiːmz."),
+      ("A word , then more.", "ɐ wˈɜɹd , ðˈɛn mˈɔɹ.", "ɐ wˈɜːd , ðˈɛn mˈɔː.")
     ])
   }
 }
