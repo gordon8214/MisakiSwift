@@ -48,14 +48,27 @@ struct GluedSpanTests {
     ])
   }
 
-  /// A label over several tokens, the last of which holds more than the
-  /// label. That token reaches past the span, so it was never the span's and
-  /// kept its own reading: the label's last word was said twice,
-  /// `tˈimˈObᵊlmˈObᵊld` ("T-Mobile mobile'd") and `æt tˈitˈimˈObᵊl`.
+  /// A label over several tokens that ends, or starts, inside one. That
+  /// token reaches past the span, so it was never the span's and kept its
+  /// own reading, and a word of the label was said twice: the last in
+  /// `tˈimˈObᵊlmˈObᵊld` ("T-Mobile mobile'd"), the first in `æt tˈitˈimˈObᵊl`.
   @Test func aLabelThatEndsInsideATokenIsNotReadTwice() {
     Self.expectReadings([
       ("The [T-Mobile](/tˈimˈObᵊl/)'d go.", "ðə tˈimˈObᵊld ɡˌO.", "ðə tˈimˈObᵊld ɡˌQ."),
       ("An @[T-Mobile](/tˈimˈObᵊl/) post.", "ɐn ættˈimˈObᵊl pˈOst.", "ɐn attˈimˈObᵊl pˈQst.")
+    ])
+  }
+
+  /// The same where the label's last piece was left longer than the label,
+  /// by an abbreviation's period, and where a combining mark follows it.
+  /// The longer piece neither holds the span nor lies inside it, so a span
+  /// claims what it overlaps. These read `ˈækmi ˈɪŋk ˈɪŋk.` and `dˈuˌO dˈubz`
+  /// at `a1101e0`, and the first still did by containment.
+  @Test func aLabelsLastPieceIsItsOwnWhereItIsLongerThanTheLabel() {
+    Self.expectReadings([
+      ("Meet [Acme Inc](/ˈækmi ˈɪŋk/). Next week.", "mˈit ˈækmi ˈɪŋk nˈɛkst wˈik.", "mˈiːt ˈækmi ˈɪŋk nˈɛkst wˈiːk."),
+      ("The [iPhone Duo](/ˈIfˌOn dˈuˌO/)\u{301}'s screen folds.",
+       "ði ˈIfˌOn dˈuˌOz skɹˈin fˈOldz.", "ði ˈIfˌOn dˈuˌOz skɹˈiːn fˈQldz.")
     ])
   }
 
@@ -73,7 +86,8 @@ struct GluedSpanTests {
        "sˈi ðə sˈɛlf.sˌiˌɛnˈɛn lˈAəɹ.", "sˈiː ðə sˈɛlf.sˌiˌɛnˈɛn lˈAə."),
       ("The [word](/wˈɜɹd/)_flag here.", "ðə wˈɜɹdflˈæɡ hˈɪɹ.", "ðə wˈɜɹdflˈaɡ hˈɪə."),
       ("A [word](/wˈɜɹd/)+ thing.", "ɐ wˈɜɹdplˈʌs θˈɪŋ.", "ɐ wˈɜɹdplˈʌs θˈɪŋ."),
-      ("[Verizon](/vəɹˈIzᵊn/)'d go.", "vəɹˈIzᵊnd ɡˌO.", "vəɹˈIzᵊnd ɡˌQ.")
+      ("[Verizon](/vəɹˈIzᵊn/)'d go.", "vəɹˈIzᵊnd ɡˌO.", "vəɹˈIzᵊnd ɡˌQ."),
+      ("[Verizon](/vəɹˈIzᵊn/)\u{2019}d go.", "vəɹˈIzᵊnd ɡˌO.", "vəɹˈIzᵊnd ɡˌQ.")
     ])
   }
 
@@ -95,8 +109,9 @@ struct GluedSpanTests {
   /// `kˈOvɪdˈɛks`. All four were the span alone before.
   ///
   /// A hyphen that opens the token is still the sign it was (the fifth row
-  /// was `tə pˈYnts`, the figure gone), and an en dash is a mark and is read
-  /// (`vəɹˈIzᵊn lˈIn` before).
+  /// was `tə pˈYnts`, the figure gone). An en dash and a bracket are marks
+  /// and are read (`vəɹˈIzᵊn lˈIn` and `wˈɜɹd) hˈɪɹ` before; the "s" in the
+  /// bracket is the letter, as a bare one is).
   @Test func whatOpensAPieceUnreadIsSetAside() {
     Self.expectReadings([
       ("A [COVID](/kˈOvɪd/)-19 case.", "ɐ kˈOvɪdnˌIntˈin kˈAs.", "ɐ kˈOvɪdnˌIntˈiːn kˈAs."),
@@ -105,16 +120,16 @@ struct GluedSpanTests {
       ("Says [COVID](/kˈOvɪd/)\u{2011}19 today.", "sˈɛz kˈOvɪdnˌIntˈin tədˈA.", "sˈɛz kˈOvɪdnˌIntˈiːn tədˈA."),
       ("It fell to -19[points](/pˈYnts/) today.",
        "ˌɪt fˈɛl tə mˈInəs nˌIntˈinpˈYnts tədˈA.", "ˌɪt fˈɛl tə mˈInəs nˌIntˈiːnpˈYnts tədˈA."),
-      ("The [Verizon](/vəɹˈIzᵊn/)\u{2013}5 line.", "ðə vəɹˈIzᵊn—fˈIv lˈIn.", "ðə vəɹˈIzᵊn—fˈIv lˈIn.")
+      ("The [Verizon](/vəɹˈIzᵊn/)\u{2013}5 line.", "ðə vəɹˈIzᵊn—fˈIv lˈIn.", "ðə vəɹˈIzᵊn—fˈIv lˈIn."),
+      ("The [word](/wˈɜɹd/)(s) here.", "ðə wˈɜɹd(ˈɛs) hˈɪɹ.", "ðə wˈɜɹd(ˈɛs) hˈɪə.")
     ])
   }
 
-  /// A span ends after a whole character, so a combining mark typed after
-  /// the label stays in the span's piece: the acute of a decomposed "Duó"
-  /// under a span on "Duo". The possessive is re-voiced only against the
-  /// span itself, and with the mark cut off between them it read `dˈuˌOs`.
-  /// Both rows are unmoved.
-  @Test func aSpanEndsAfterAWholeCharacter() {
+  /// A combining mark typed after the label is a piece with nothing to read:
+  /// the acute of a decomposed "Duó" under a span on "Duo". Both rows are
+  /// unmoved. Read, the mark was a letter the fallback named (`dˈuˌOˈɛks ɪz`),
+  /// and in the way of the possessive it left the clitic `s` (`dˈuˌOs`).
+  @Test func aCombiningMarkAfterTheLabelReadsAsNothing() {
     Self.expectReadings([
       ("The [Duo](/dˈuˌO/)\u{301}'s screen folds.", "ðə dˈuˌOz skɹˈin fˈOldz.", "ðə dˈuˌOz skɹˈiːn fˈQldz."),
       ("The iPhone [Duo](/dˈuˌO/)\u{301} is here.", "ði ˈIfˌOn dˈuˌO ɪz hˈɪɹ.", "ði ˈIfˌQn dˈuˌO ɪz hˈɪə.")
@@ -137,19 +152,34 @@ struct GluedSpanTests {
   /// `wɪð dˈiʤˈAsᵊn` (British `ˈiːʤˈAsᵊn`) and the dagger `vəɹˈIzᵊnˈɛks`. Those
   /// two rows are unmoved from before the cut, when the span took the piece
   /// with it; the others were `ðə wˈɜɹd flˈæɡ`, `ˈOpᵊn sˈɛvən nˈW` and
-  /// `ðə ɹˈOl bˈænd`. A period is a mark and is read: the last row was
-  /// `ðə ʤˈAsᵊn fˈIl`.
+  /// `ðə ɹˈOl bˈænd`. A period is a mark and is read: the last two rows
+  /// were `ðə ʤˈAsᵊn fˈIl` and `vəɹˈIzᵊn tədˈA ɪt`, and the dagger before
+  /// that period is still set aside and not read with it (`vəɹˈIzᵊnˈɛks.`).
+  /// A superscript is no figure: a footnote's "¹" read `vəɹˈIzᵊnwˈʌn` with
+  /// the cut alone.
   @Test func aPieceWithNothingToReadReadsAsNothingAndAMarkIsRead() {
     Self.expectReadings([
       ("Run it with --[json](/ʤˈAsᵊn/) for agents.",
        "ɹˈʌn ɪt wɪð ʤˈAsᵊn fɔɹ ˈAʤᵊnts.", "ɹˈʌn ɪt wɪð ʤˈAsᵊn fɔː ˈAʤᵊnts."),
       ("Says [Verizon](/vəɹˈIzᵊn/)\u{2020} today.", "sˈɛz vəɹˈIzᵊn tədˈA.", "sˈɛz vəɹˈIzᵊn tədˈA."),
+      ("Says [Verizon](/vəɹˈIzᵊn/)\u{B9} today.", "sˈɛz vəɹˈIzᵊn tədˈA.", "sˈɛz vəɹˈIzᵊn tədˈA."),
       ("The [my](/mI/)_[word](/wˈɜɹd/) flag.", "ðə mIwˈɜɹd flˈæɡ.", "ðə mIwˈɜɹd flˈaɡ."),
       ("Open [24](/twˈɛnti fˈɔɹ/)/[7](/sˈɛvən/) now.",
        "ˈOpᵊn twˈɛnti fˈɔɹsˈɛvən nˈW.", "ˈQpᵊn twˈɛnti fˈɔɹsˈɛvən nˈW."),
       ("The [rock](/ɹˈɑk/)'[n](/ən/)'[roll](/ɹˈOl/) band.", "ðə ɹˈɑkənɹˈOl bˈænd.", "ðə ɹˈɑkənɹˈOl bˈand."),
       ("The [vocab](/vˈOkˌæb/).[json](/ʤˈAsᵊn/) file.",
-       "ðə vˈOkˌæb.ʤˈAsᵊn fˈIl.", "ðə vˈOkˌæb.ʤˈAsᵊn fˈIl.")
+       "ðə vˈOkˌæb.ʤˈAsᵊn fˈIl.", "ðə vˈOkˌæb.ʤˈAsᵊn fˈIl."),
+      ("Says [Verizon](/vəɹˈIzᵊn/)\u{2020}. Today it rained.",
+       "sˈɛz vəɹˈIzᵊn. tədˈA ɪt ɹˈAnd.", "sˈɛz vəɹˈIzᵊn. tədˈA ɪt ɹˈAnd.")
+    ])
+  }
+
+  /// The possessive is re-voiced against the span, and looks past a piece
+  /// the cut emptied to find it. With the dagger between them the clitic
+  /// was the bare `s`, `bˈOzs`; the row is unmoved from before the cut.
+  @Test func aPossessiveLooksPastAnEmptiedPiece() {
+    Self.expectReadings([
+      ("[Bose](/bˈOz/)\u{2020}'s speakers.", "bˈOzᵻz spˈikəɹz.", "bˈOzɪz spˈiːkəz.")
     ])
   }
 
@@ -164,55 +194,86 @@ struct GluedSpanTests {
     ])
   }
 
-  /// The period that closes a token is the abbreviation's, and it stays with
-  /// a span on the abbreviation, as it always has: cut off, it is a full
-  /// stop in front of the name (`dˈɑktəɹ. smˈɪθ`). The first two rows are
-  /// unmoved. A sentence that ends on the abbreviation loses its pause the
-  /// same way, and the caller's remedy is the third row's: the period inside
-  /// the label and the phonemes. A span on the period itself is still cut
-  /// out of its token (the last row was `ðə dˈɑt kˈɑm`).
+  /// The period that closes an abbreviation stays with a span on the
+  /// abbreviation, as it always has: cut off, it is a full stop in front of
+  /// the name (`dˈɑktəɹ. smˈɪθ`). The first three rows are unmoved; the
+  /// third is an abbreviation by the period inside it. A sentence that ends
+  /// on the abbreviation loses its pause the same way, and the caller's
+  /// remedy is the fourth row's: the period inside the label and the
+  /// phonemes. A span on the period itself is still cut out of its token
+  /// (the last row was `ðə dˈɑt kˈɑm`).
   @Test func anAbbreviationsPeriodStaysWithItsSpan() {
     Self.expectReadings([
       ("Ask [Dr](/dˈɑktəɹ/). Smith now.", "ˈæsk dˈɑktəɹ smˈɪθ nˈW.", "ˈɑːsk dˈɑktəɹ smˈɪθ nˈW."),
       ("Call her [Ms](/mˈɪz/). She agreed.", "kˈɔl hɜɹ mˈɪz ʃˌi əɡɹˈid.", "kˈɔːl hɜː mˈɪz ʃˌiː əɡɹˈiːd."),
+      ("The [U.S](/jˌuˈɛs/). said so.", "ðə jˌuˈɛs sˈɛd sˌO.", "ðə jˌuˈɛs sˈɛd sˌQ."),
       ("Call her [Ms.](/mˈɪz./) She agreed.", "kˈɔl hɜɹ mˈɪz. ʃˌi əɡɹˈid.", "kˈɔːl hɜː mˈɪz. ʃˌiː əɡɹˈiːd."),
       ("The x[.](/dˈɑt/) com.", "ði ˈɛksdˈɑt kˈɑm.", "ði ˈɛksdˈɑt kˈɒm.")
+    ])
+  }
+
+  /// The period after a lone capital is not an abbreviation's. spaCy keeps
+  /// it in the token in case the capital is an initial, and where the word
+  /// ends a sentence it is the sentence's full stop, which the span took:
+  /// `spˈAsˈɛks ðə nˈɛkst`, `ˈɛks hˌi spˈOk` and `ʤˈAzˈizˈi. hˌi`, the "Z"
+  /// said twice as well. The cost is the last row: a span on an initial
+  /// keeps its period too (`ʤˈA smˈɪθ` before), as "J. Smith" does unwrapped.
+  @Test func aLoneCapitalsPeriodIsCutOffAndRead() {
+    Self.expectReadings([
+      ("It is from [SpaceX](/spˈAsˈɛks/). The next one flew.",
+       "ˌɪt ɪz fɹʌm spˈAsˈɛks. ðə nˈɛkst wˈʌn flˈu.", "ˌɪt ɪz fɹɒm spˈAsˈɛks. ðə nˈɛkst wˈʌn flˈuː."),
+      ("We met [Malcolm](/mˈælkəm/) [X](/ˈɛks/). He spoke.",
+       "wˌi mˈɛt mˈælkəm ˈɛks. hˌi spˈOk.", "wˌiː mˈɛt mˈælkəm ˈɛks. hˌiː spˈQk."),
+      ("I like [Jay-Z](/ʤˈAzˈi/). He raps.", "ˌI lˈIk ʤˈAzˈi. hˌi ɹˈæps.", "ˌI lˈIk ʤˈAzˈi. hˌiː ɹˈaps."),
+      ("He is [J](/ʤˈA/). Smith.", "hˌi ɪz ʤˈA. smˈɪθ.", "hˌiː ɪz ʤˈA. smˈɪθ.")
     ])
   }
 
   /// A span that opens the text ends where its label does. The label was
   /// appended as bridged UTF-16 to a string that is UTF-8 from then on, so
   /// with any non-ASCII letter in it the span's end was recorded one unit
-  /// short per such letter: "Niño" fell outside its own span and was read
-  /// twice (`ɛl nˈinjO nˈinjO jˈɪɹ.`), and the cut, moved to a character's
-  /// edge from the wrong place, took the apostrophe off the possessive
-  /// (`bijˈɑnsA ˈælbəm`, which the first row was not before the cut).
+  /// short per such letter. "Niño" fell outside its own span and was read
+  /// twice (`ɛl nˈinjO nˈinjO jˈɪɹ.`); the second row was `bijˈɑnsA tˈʊɹ.`.
+  ///
+  /// With the cut and the claim by overlap the readings no longer show it,
+  /// so the tokens are read too: an end one unit short cuts the token where
+  /// it already ends and leaves a piece of no text after the span.
   @Test func aSpanThatOpensTheTextEndsWhereItsLabelDoes() {
     Self.expectReadings([
-      ("[Beyoncé](/bijˈɑnsA/)\u{2019}s album is out.", "bijˈɑnsAz ˈælbəm ɪz ˈWt.", "bijˈɑnsAz ˈalbəm ɪz ˈWt."),
       ("[El Niño](/ɛl nˈinjO/) year.", "ɛl nˈinjO jˈɪɹ.", "ɛl nˈinjO jˈɪə."),
       ("[Beyoncé](/bijˈɑnsA/)2024 tour.",
-       "bijˈɑnsAtwˈɛnti twˈɛnti fˈɔɹ tˈʊɹ.", "bijˈɑnsAtwˈɛnti twˈɛnti fˈɔː tˈʊə.")
+       "bijˈɑnsAtwˈɛnti twˈɛnti fˈɔɹ tˈʊɹ.", "bijˈɑnsAtwˈɛnti twˈɛnti fˈɔː tˈʊə."),
+      ("[Beyoncé](/bijˈɑnsA/)\u{2019}s album is out.", "bijˈɑnsAz ˈælbəm ɪz ˈWt.", "bijˈɑnsAz ˈalbəm ɪz ˈWt.")
     ])
+    let tokens = EnglishG2P(british: false).phonemize(text: "[Beyoncé](/bijˈɑnsA/)\u{2019}s album is out.").1
+    #expect(tokens.map(\.text) == ["Beyoncé", "\u{2019}s", "album", "is", "out", "."])
   }
 
-  /// A token no span cuts is not touched, a hyphen that stands alone
-  /// included: only a piece is ever emptied. And a span that ends the text
-  /// is cut out of its token like any other.
+  /// A token no span cuts is not touched: only a piece is ever emptied. A
+  /// hyphen that stands alone keeps its reading, and so does a token spaCy
+  /// cut off itself against a span, where the reading is the letter the
+  /// fallback names for "#" (unmoved, and not endorsed). And a span that
+  /// ends the text is cut out of its token like any other.
   @Test func onlyATokenASpanCutsIsTouched() {
     Self.expectReadings([
       ("Up 5 - [ten](/tˈɛn/) - and more.", "ˌʌp fˈIv — tˈɛn — ænd mˈɔɹ.", "ˌʌp fˈIv — tˈɛn — and mˈɔː."),
+      ("The [C](/sˈi/)# code.", "ðə sˈiˈɛks kˈOd.", "ðə sˈiwˈiː kˈQd."),
+      ("See #[1](/wˈʌn/) now.", "sˈi ˈɛkswˈʌn nˈW.", "sˈiː wˈiːwˈʌn nˈW."),
       ("A next[word](/wˈɜɹd/)", "ɐ nˈɛkstwˈɜɹd", "ɐ nˈɛkstwˈɜɹd")
     ])
   }
 
   /// A stress or a number flag replaces nothing, so it cuts nothing: the
   /// token is still read as the one word it is, with the mark on the whole of
-  /// it. Each pair reads alike, as it did. Cut, the first read `wˌɜɹdnˈɛkst`
-  /// and the second `ˈɛksfˈIv`.
+  /// it. Each reads as its unmarked row does, as it did. Cut, the first two
+  /// read `wˌɜɹdnˈɛkst` and the x `ˈɛksfˈIv`. Nor does a stress claim a token
+  /// it only overlaps, as a forced span does: the last row's "Yorker" keeps
+  /// its stress (`jɔɹkəɹ` by overlap), as it did.
   @Test func aStressSpanCutsNothing() {
     Self.expectReadings([
       ("A [word](2)next.", "ɐ wˈɜɹdnɛkst.", "ɐ wˈɜːdnɛkst."),
+      ("A [word](#a#)next.", "ɐ wˈɜɹdnɛkst.", "ɐ wˈɜːdnɛkst."),
+      ("The [New Yor](-2)ker said.", "ðə nu jˈɔɹkəɹ sˈɛd.", "ðə njuː jˈɔːkə sˈɛd."),
       ("A wordnext.", "ɐ wˈɜɹdnɛkst.", "ɐ wˈɜːdnɛkst."),
       ("The x[-5](2) term.", "ði ˈɛks fˈIv tˈɜɹm.", "ði ˈɛks fˈIv tˈɜːm."),
       ("The x-5 term.", "ði ˈɛks fˈIv tˈɜɹm.", "ði ˈɛks fˈIv tˈɜːm.")

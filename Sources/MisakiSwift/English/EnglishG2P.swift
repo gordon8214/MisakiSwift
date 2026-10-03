@@ -68,6 +68,13 @@ final public class EnglishG2P {
     
     let value: Value
     let tokenRange: Range<String.Index>
+
+    /// Whether this is a `(/ipa/)` span, which replaces its label's reading,
+    /// and not a stress or a number flag, which changes how it is read.
+    var forcesPhonemes: Bool {
+      if case .string(let value) = value { return value.hasPrefix("/") }
+      return false
+    }
   }
 
   /// - Parameter unk: emitted for a token that neither the lexicon nor the
@@ -359,9 +366,21 @@ final public class EnglishG2P {
     // overlapping token and leave the rest non-head with an empty phoneme so
     // `foldLeft`/`mergeTokens` fold them into the head without repeating.
     // Stress and num_flags still fan out across the whole span.
+    //
+    // A span that forces phonemes takes every token it overlaps. `cutTokens`
+    // has cut at each of its ends, so that is its own pieces, and the last of
+    // them where it was left longer than the label, by the period that closes
+    // an abbreviation. Matched by containment, that piece under a label of
+    // several tokens neither held the span nor lay inside it, so it kept its
+    // own reading and the label's last word was said twice:
+    // "[Acme Inc](/ˈækmi ˈɪŋk/)." read `ˈækmi ˈɪŋk ˈɪŋk.`. A stress or a flag
+    // cuts nothing and keeps the containment test, or it would spread to a
+    // token it only touches.
     for feature in preprocessedText.features {
       let matched = mutableTokens.filter { token in
-        token.tokenRange.contains(feature.tokenRange) || feature.tokenRange.contains(token.tokenRange)
+        feature.forcesPhonemes
+          ? token.tokenRange.overlaps(feature.tokenRange)
+          : token.tokenRange.contains(feature.tokenRange) || feature.tokenRange.contains(token.tokenRange)
       }
       guard let head = matched.first else { continue }
 
@@ -718,7 +737,14 @@ final public class EnglishG2P {
     for i in 1..<tokens.count {
       let clitic = tokens[i]
       guard EnglishG2P.possessiveClitics.contains(clitic.text.lowercased()) else { continue }
-      let stem = tokens[i - 1]
+      // A piece `cutTokens` emptied may stand between the two: a dagger
+      // after the name, "[Bose](/bˈOz/)†'s", left the clitic `s` (`bˈOzs`).
+      var stemIndex = i - 1
+      while stemIndex > 0, tokens[stemIndex].phonemes == "", tokens[stemIndex].whitespace.isEmpty,
+            tokens[stemIndex].`_`.rating == 3 {
+        stemIndex -= 1
+      }
+      let stem = tokens[stemIndex]
       guard stem.`_`.rating == 5,
             stem.whitespace.isEmpty,
             let stemPhonemes = stem.phonemes,

@@ -43,22 +43,17 @@ extension EnglishG2P {
   /// others are copied from the token as it was, since the first may have
   /// been emptied by then.
   ///
-  /// A span ends after a whole character. A combining mark typed after the
-  /// label is part of the label's last character, so the cut moves out to
-  /// that character's edge and the mark stays in the span's piece. Cut off,
-  /// it stood between the span and a possessive, which is re-voiced only
-  /// against the span itself: a decomposed "Duó's" under a row for "Duo"
-  /// read `dˈuˌOs`.
+  /// The period that closes an abbreviation stays with the label before it.
+  /// spaCy keeps that period in the token ("Dr.", "U.S.", "p.m."), and a span
+  /// on the abbreviation has always taken it: cut off, it is a full stop in
+  /// front of the name ("[Dr](/dˈɑktəɹ/). Smith" read `dˈɑktəɹ. smˈɪθ`). A
+  /// caller that wants the period read where it also ends a sentence writes
+  /// it into the label and the phonemes. spaCy also keeps the period after a
+  /// lone capital, which may be an initial, and there it is as often the
+  /// sentence's own: that one is cut off and read (`isAbbreviation`).
   ///
-  /// The period that closes the token stays with the label before it. spaCy
-  /// keeps a period in a token only where it is the abbreviation's own
-  /// ("Dr.", "U.S.", "p.m."), and a span on the abbreviation has always
-  /// taken it: cut off, it is a full stop in front of the name
-  /// ("[Dr](/dˈɑktəɹ/). Smith" read `dˈɑktəɹ. smˈɪθ`). A caller that wants
-  /// the period read where it also ends a sentence writes it into the label
-  /// and the phonemes.
-  ///
-  /// Both lists are in text order, so one pass over each finds every cut.
+  /// The tokens are in text order and so are the spans, so one pass over each
+  /// finds every cut.
   func cutTokens(
     _ tokens: [MToken],
     at features: [PreprocessFeature],
@@ -67,15 +62,12 @@ extension EnglishG2P {
   ) -> [MToken] {
     var labelStarts: Set<String.Index> = []
     var bounds: [String.Index] = []
-    for feature in features {
-      guard case .string(let value) = feature.value, value.hasPrefix("/") else { continue }
-      let last = EnglishG2P.characterStart(of: feature.tokenRange.upperBound, in: text)
+    for feature in features where feature.forcesPhonemes {
       labelStarts.insert(feature.tokenRange.lowerBound)
       bounds.append(feature.tokenRange.lowerBound)
-      bounds.append(last == feature.tokenRange.upperBound ? last : text.index(after: last))
+      bounds.append(feature.tokenRange.upperBound)
     }
     guard !bounds.isEmpty else { return tokens }
-    bounds.sort()
 
     var result: [MToken] = []
     result.reserveCapacity(tokens.count)
@@ -97,7 +89,8 @@ extension EnglishG2P {
         var cut = next < bounds.count && bounds[next] < end ? bounds[next] : end
         if start > whole.tokenRange.lowerBound, let rest = EnglishG2P.endOfUnreadOpening(in: text[start..<cut]) {
           cut = rest
-        } else if !labelStarts.contains(cut), text[cut..<end] == "." {
+        } else if !labelStarts.contains(cut), text[cut..<end] == ".",
+                  EnglishG2P.isAbbreviation(text[whole.tokenRange.lowerBound..<cut]) {
           cut = end
         }
         piece.text = String(text[start..<cut])
@@ -118,16 +111,22 @@ extension EnglishG2P {
     return result
   }
 
-  /// Where the character that holds `index` starts: `index` itself between
-  /// two characters and at the end.
-  private static func characterStart(of index: String.Index, in text: String) -> String.Index {
-    guard index < text.endIndex else { return index }
-    return text.index(before: text.index(after: index))
+  /// Whether what stands before a token's closing period is an abbreviation:
+  /// it holds a period of its own ("U.S", "p.m") or does not end on a capital
+  /// ("Dr", "Inc", "vs"). What is left is a lone capital after anything but a
+  /// capital ("SpaceX.", "pH.", "plan B."), where spaCy keeps the period in
+  /// case the capital is an initial. A span there took the sentence's full
+  /// stop: "It is from [SpaceX](/spˈAsˈɛks/). The next one flew." ran on.
+  private static func isAbbreviation(_ stem: Substring) -> Bool {
+    stem.contains(".") || stem.last?.isUppercase != true
   }
 
-  /// Whether a character is one a piece can be read for: a letter, a figure,
+  /// Whether a character is one a piece can be read for: a letter, a digit,
   /// a mark, or a symbol the lexicon has a word for ("+", "&", "@", "%"). A
-  /// piece that holds none reads as nothing.
+  /// piece that holds none reads as nothing. A superscript is no digit: a
+  /// footnote's "¹" after a span read "one". Nor is a combining mark typed
+  /// after the label a letter (a decomposed "Duó" under a span on "Duo"):
+  /// it is a piece of its own, and emptied.
   ///
   /// Inside a token that is already its reading: junk the lexicon cannot
   /// place is emptied by the group it shares, and so are the hyphens of a
@@ -136,7 +135,8 @@ extension EnglishG2P {
   /// "--[json](/ʤˈAsᵊn/)" read `dˈiʤˈAsᵊn` and a dagger after a span `ˈɛks`.
   /// Before the cut the span took all of these with it, and none was heard.
   private static func isRead(_ character: Character) -> Bool {
-    character.isLetter || character.isNumber || readMarks.contains(character)
+    character.isLetter || readMarks.contains(character)
+      || character.unicodeScalars.first?.properties.generalCategory == .decimalNumber
   }
 
   /// The marks `retokenize` voices whatever the tag, and the lexicon's symbols.
