@@ -264,7 +264,7 @@ final class Lexicon {
     
     let stress: Double? = (word == word.lowercased() ? nil : (word == word.uppercased() ? capStresses.1 : capStresses.0))
     let tag = EnglishPOSTag(lexicalClass: token.tag, penn: pennTag)
-    let res = getWord(word, tag: tag, stress: stress, ctx: ctx)
+    let res = getWord(word, tag: tag, stress: stress, ctx: ctx, isHead: token.`_`.is_head)
     if let phoneme = res.phoneme {
       return (Lexicon.applyStress(appendCurrency(phoneme, currency: token.`_`.currency), stress: token.`_`.stress), res.rating)
     } else if isNumber(word: word, is_head: token.`_`.is_head) {
@@ -294,9 +294,10 @@ final class Lexicon {
     _ word: String,
     tag: EnglishPOSTag,
     stress: Double?,
-    ctx: TokenContext
+    ctx: TokenContext,
+    isHead: Bool = true
   ) -> (phoneme: String?, rating: Int?) {
-    let sc = getSpecialCase(word, tag: tag, stress: stress, ctx: ctx)
+    let sc = getSpecialCase(word, tag: tag, stress: stress, ctx: ctx, isHead: isHead)
     if sc.phoneme != nil { return sc }
     var candidate = word
     let wl = word.lowercased()
@@ -482,7 +483,8 @@ final class Lexicon {
     _ word: String,
     tag: EnglishPOSTag,
     stress: Double?,
-    ctx: TokenContext
+    ctx: TokenContext,
+    isHead: Bool
   ) -> (phoneme: String?, rating: Int?) {
     if tag.lexicalClass == .punctuation, let target = Lexicon.addSymbols[word] {
       return lookup(target, tag: .none, stress: -0.5, ctx: ctx)
@@ -494,9 +496,8 @@ final class Lexicon {
       // short. Requires at least one letter so decimal numbers ("25.10",
       // "6.17") fall through to getNumber instead of being silently
       // mapped to an empty phoneme by getNNP.
-      let parts = word.split(separator: ".")
-      if parts.map({ $0.count }).max() ?? 0 < 3 {
-        return getNNP(word)
+      if Lexicon.isDottedAcronym(word) {
+        return getDottedAcronym(word, isHead: isHead)
       }
     } else if word == "a" || word == "A" {
       // Upstream misaki reads a bare "a"/"A" as the LETTER NAME unless spaCy
@@ -669,6 +670,84 @@ final class Lexicon {
     return "XX"
   }
   
+  /// Whether `word` has a dotted acronym's shape, "M.R.C.S." or "e.g.": a
+  /// letter in it, a dot inside it and no more than two characters between
+  /// dots. The one test for both callers: `EnglishG2P.retokenize` keeps such
+  /// a token whole, and `getSpecialCase` reads it, and every slice of a
+  /// subtoken group that has the shape, through `getDottedAcronym`.
+  ///
+  /// The shape is wider than an acronym. Upstream asks for letters alone
+  /// (`word.replace('.', '').isalpha()`); here a figure beside a letter has
+  /// it too ("v0.5", "No.5", the slice "1.5e" of "1.5e5"), and so does an
+  /// acronym with a hyphen, an apostrophe or an ampersand in it ("C.-C.",
+  /// "O.K.'d", "S.&P."). Narrowed to upstream's, those would be subtokenized,
+  /// which in this port makes a mark of every dot and hands a part the
+  /// lexicon cannot read to the fallback with its whole group: "S.&P." read
+  /// `ˈɛs.ænd pˈi.` and "Ch.3" `ʧˈɑŋ`. So the shape is kept, and what is read
+  /// in it is widened instead.
+  static func isDottedAcronym(_ word: String) -> Bool {
+    guard word.contains(where: \.isLetter),
+          word.trimmingCharacters(in: CharacterSet(charactersIn: ".")).contains(".") else { return false }
+    return word.split(separator: ".").allSatisfy { $0.count < 3 }
+  }
+
+  /// Reads a word of a dotted acronym's shape: its letters spelled, and what
+  /// stands among them that has a reading of its own read too, a figure and
+  /// a symbol the lexicon has a word for.
+  ///
+  /// `getNNP` spells a word by its letters and drops every other character
+  /// without a trace, and it was handed the whole word. So a figure beside a
+  /// letter was that letter and nothing more: "v0.5" was `vˈi`, "0.5x" `ˈɛks`,
+  /// "No.5" `ˌɛnˈO`, "F.2" `ˈɛf`, and the slice "1.5e" made `ˈi fˈIv` of
+  /// "1.5e5". A "%" or an "&" went the same way ("XX.X%", "S.&P.").
+  ///
+  /// The word is cut as the subtokenizer cuts it. A figure is read as
+  /// `getNumber` reads one, as a head only where the word is one and nothing
+  /// read stands in front of the figure. A symbol in `symbolSet` is read as
+  /// its word. Everything else is a stretch of letters, dots and marks,
+  /// which `getNNP` spells as it always did, so a word with neither a figure
+  /// nor such a symbol in it reads exactly as before. A figure `getNumber`
+  /// has no reading for is passed over, as every figure was.
+  private func getDottedAcronym(_ word: String, isHead: Bool) -> (phoneme: String?, rating: Int?) {
+    guard word.contains(where: { $0.isNumber || Lexicon.symbolSet[String($0)] != nil }) else {
+      return getNNP(word)
+    }
+    var readings: [(phoneme: String, rating: Int)] = []
+    var letters = ""
+    func spellLetters() {
+      if let spelled = getNNP(letters).phoneme { readings.append((spelled, 3)) }
+      letters = ""
+    }
+
+    let text = word as NSString
+    let pieces = EnglishG2P.subtokenizeRegex.matches(in: word, range: NSRange(location: 0, length: text.length))
+      .map { text.substring(with: $0.range) }
+    for piece in pieces {
+      if piece.contains(where: \.isNumber) {
+        spellLetters()
+        // The figure heads where the word does and nothing read stands in
+        // front of it ("~.5x" is "point five", "No.5" is "five"). A hyphen in
+        // front is its sign only there, as `isNumber` has it. In a slice
+        // that opens on one it is a joiner: "-0.6b", tried on the way through
+        // "parakeet-en-0.6b".
+        let heads = isHead && readings.isEmpty
+        let digits = piece.hasPrefix("-") && !heads ? String(piece.dropFirst()) : piece
+        let figure = getNumber(digits, currency: nil, is_head: heads, num_flags: "")
+        if let phoneme = figure.0, let rating = figure.1 { readings.append((phoneme, rating)) }
+      } else if let symbol = Lexicon.symbolSet[piece],
+                let spoken = lookup(symbol, tag: .none, stress: nil, ctx: nil).phoneme {
+        spellLetters()
+        readings.append((spoken, 4))
+      } else {
+        letters += piece
+      }
+    }
+    spellLetters()
+
+    guard !readings.isEmpty else { return (nil, nil) }
+    return (readings.map(\.phoneme).joined(separator: " "), readings.map(\.rating).min())
+  }
+
   /// Spells out acronyms, abbreviations and proper nouns letter-by-letter
   private func getNNP(_ word: String) -> (phoneme: String?, rating: Int?) {
     let pieces: [String?] = word.compactMap { ch in

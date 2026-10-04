@@ -580,11 +580,10 @@ final public class EnglishG2P {
     var currency: String? = nil
     
     for (i, token) in tokens.enumerated() {
-      let dottedParts = token.text.split(separator: ".")
-      let isDottedAcronym = token.text.contains(where: \.isLetter)
-        && token.text.trimmingCharacters(in: CharacterSet(charactersIn: ".")).contains(".")
-        && (dottedParts.map(\.count).max() ?? 0) < 3
-      let needsSplit = token.`_`.alias == nil && token.phonemes == nil && !isDottedAcronym
+      // A token of a dotted acronym's shape is kept whole: subtokenized, each
+      // of its dots is a mark with a reading of its own, and nothing would
+      // read "U.S." as one.
+      let needsSplit = token.`_`.alias == nil && token.phonemes == nil && !Lexicon.isDottedAcronym(token.text)
       var subtokens: [MToken] = []
       if needsSplit {
         let parts = subtokenize(word: token.text)
