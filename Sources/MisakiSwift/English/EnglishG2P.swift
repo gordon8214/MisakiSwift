@@ -812,6 +812,9 @@ final public class EnglishG2P {
     guard tokens.count > 1 else { return }
     for i in 1..<tokens.count {
       let clitic = tokens[i]
+      // An explicitly forced suffix is a second user span, not a clitic
+      // asking its host for a reading. Its exact override takes precedence.
+      guard clitic.`_`.rating != 5 else { continue }
       let text = clitic.text.lowercased()
         .replacingOccurrences(of: "’", with: "'")
         .replacingOccurrences(of: "‘", with: "'")

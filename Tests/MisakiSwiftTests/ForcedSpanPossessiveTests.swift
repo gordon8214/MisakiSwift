@@ -101,4 +101,16 @@ struct ForcedSpanPossessiveTests {
     #expect(american.phonemize(text: "[Verizon](/vəɹˈIzᵊn/) 've gone").0 == "vəɹˈIzᵊn vˈiv ɡˈɔn")
     #expect(american.phonemize(text: "it'd go").0 == "ˈɪTəd ɡˌO")
   }
+  @Test func anExplicitlyForcedSuffixKeepsItsOwnReading() {
+    for british in [false, true] {
+      let processor = EnglishG2P(british: british)
+      for suffix in ["'s", "'ve", "'re", "'ll", "'d", "n't", "'"] {
+        for spelling in [suffix, suffix.replacingOccurrences(of: "'", with: "’")] {
+          let text = "[they](/ðˈA/)[\(spelling)](/fˈIv/)"
+          #expect(processor.phonemize(text: text).0 == "ðˈAfˈIv", "\(text)")
+        }
+      }
+    }
+  }
+
 }
