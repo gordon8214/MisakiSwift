@@ -220,7 +220,10 @@ final public class EnglishG2P {
   /// "[Misaki](/misˈɑki/) is a G2P engine designed for [Kokoro](/kˈOkəɹO/) models."
   private func preprocess(text: String) -> PreprocessTuple {
     // Matches the pattern of form [link text](url) and captures the two parts
-    let linkRegex = try! NSRegularExpression(pattern: #"\[([^\]]+)\]\(([^\)]*)\)"#, options: [])
+    // An open editorial bracket may precede a forced span. Its label must
+    // not reach back across that bracket, or across a line. The 100-unit
+    // cap admits every label the app's 100-byte pronunciation limit emits.
+    let linkRegex = try! NSRegularExpression(pattern: #"\[([^\[\]\r\n]{1,100})\]\(([^\)]*)\)"#, options: [])
 
     var result = ""
     var tokens: [String] = []
@@ -232,7 +235,7 @@ final public class EnglishG2P {
     let fullRange = NSRange(location: 0, length: ns.length)
  
     linkRegex.enumerateMatches(in: input, options: [], range: fullRange) { match, _, _ in
-      guard let m = match else { return }
+      guard let m = match, m.range(at: 1).length <= 100 else { return }
 
       // `Range(_:in:)` converts UTF-16 offsets to String.Index correctly.
       // Counting Characters with `offsetBy:` mixed two coordinate systems:
@@ -247,8 +250,9 @@ final public class EnglishG2P {
       let start = converted.lowerBound
       let end = converted.upperBound
 
-      result += String(input[lastEnd..<start])
-      tokens.append(contentsOf: String(input[lastEnd..<start]).split(separator: " ").map(String.init))
+      let preceding = Self.foldLineBreaks(String(input[lastEnd..<start]))
+      result += preceding
+      tokens.append(contentsOf: preceding.split(separator: " ").map(String.init))
 
       // The label is copied out of `input`, as native text. An empty string
       // adopts the first thing appended to it, storage and all, and what
@@ -284,8 +288,9 @@ final public class EnglishG2P {
     }
     
     if lastEnd < input.endIndex {
-      result += String(input[lastEnd...])
-      tokens.append(contentsOf: String(input[lastEnd...]).split(separator: " ").map(String.init))
+      let trailing = Self.foldLineBreaks(String(input[lastEnd...]))
+      result += trailing
+      tokens.append(contentsOf: trailing.split(separator: " ").map(String.init))
     }
     
     return (text: result, tokens: tokens, features: features)
@@ -839,6 +844,10 @@ final public class EnglishG2P {
     }
   }
 
+  private static func foldLineBreaks(_ text: String) -> String {
+    String(String.UnicodeScalarView(text.unicodeScalars.map { $0 == "\n" || $0 == "\r" ? " " : $0 }))
+  }
+
   // Turns the text into phonemes that can then be fed to text-to-speech (TTS) engine for converting to audio
   public func phonemize(text: String, performPreprocess: Bool = true) -> (String, [MToken]) {
     // Fold line breaks to spaces before anything else.
@@ -863,13 +872,11 @@ final public class EnglishG2P {
     // Scalar-level folding is also what makes the length claim true where it
     // matters: "a\r\nb" is 4 UTF-16 units before and after, so the NSRange
     // offsets `preprocess` works in are preserved exactly.
-    let folded = String(String.UnicodeScalarView(
-      text.unicodeScalars.map { $0 == "\n" || $0 == "\r" ? " " : $0 }
-    ))
+    let folded = Self.foldLineBreaks(text)
 
     let pre: PreprocessTuple
     if performPreprocess {
-        pre = self.preprocess(text: folded)
+        pre = self.preprocess(text: text)
     } else {
         pre = (text: folded, tokens: [], features: [])
     }
