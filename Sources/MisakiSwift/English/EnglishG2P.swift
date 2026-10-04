@@ -914,6 +914,10 @@ final public class EnglishG2P {
         var left = 0
         var right = arr.count
         var shouldFallback = false
+        // A number's alphabet is absent from BART. Only a failed group with
+        // a figure needs a narrower fallback; every readable group, and every
+        // letters-only fallback, keeps the existing walk and reading.
+        let keepsFigures = arr.contains { $0.text.contains(where: \.isNumber) }
         while left < right {
           let hasFixed = arr[left..<right].contains { $0.`_`.alias != nil || $0.phonemes != nil }
           let token: MToken? = hasFixed
@@ -948,6 +952,27 @@ final public class EnglishG2P {
               if last.text.allSatisfy({ EnglishG2P.subTokenJunks.contains($0) }) {
                 last.phonemes = ""
                 last.`_`.rating = 3
+              } else if keepsFigures {
+                // Consume only the unread stretch, stopping before a figure
+                // or a fixed reading. The walk then reads the figure through
+                // the lexicon as it always did, with its original head/flags.
+                let start = arr[..<right].lastIndex {
+                  $0.text.contains(where: \.isNumber) || $0.phonemes != nil || $0.`_`.alias != nil
+                }.map { $0 + 1 } ?? 0
+                let unread = mergeTokens(Array(arr[start...right]), pennTags: &pennTags)
+                let out = fallback(unread)
+                arr[start].phonemes = out.0
+                arr[start].`_`.rating = out.1
+                if start < right {
+                  for j in (start + 1)...right {
+                    arr[j].phonemes = ""
+                    arr[j].`_`.rating = out.1
+                  }
+                }
+                ctx = tokenContext(ctx, ps: out.0, token: unread)
+                right = start
+                left = 0
+                continue
               } else {
                 shouldFallback = true
                 break

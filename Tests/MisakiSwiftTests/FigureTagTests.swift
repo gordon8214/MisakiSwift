@@ -209,21 +209,16 @@ struct FigureTagTests {
     ])
   }
 
-  /// The cost, pinned as it reads. A re-tagged figure joins the group of what
-  /// is glued to it, and a group with a part no lexicon branch reads goes to
-  /// the fallback whole, which has no digits. The precision of a format
-  /// specifier joins the letters after it: the first row was
-  /// `pəɹsˈɛnt.ˈɛfs`, the tagger's punctuation cutting it in three. Where
-  /// the tagger calls the precision a word the specifier always read so, as
-  /// in the second row. And a figure glued to a unit the fallback takes was
-  /// its own point beside the fallback's "ms" (`.ˈɛmz`, the third of these),
-  /// and is the fallback's reading of both, as the first two always were.
-  @Test func aFigureGluedToAPartTheFallbackTakesGoesWithIt() {
+  /// A re-tagged figure keeps its lexicon reading when the adjoining letters
+  /// need fallback. At 3617c2d the format precision and backticked figures
+  /// disappeared with those letters; FallbackFigureTests pins the repair.
+  @Test func aFigureGluedToAPartTheFallbackTakesIsStillRead() {
     Self.expectReadings([
-      ("It took %.4fs, then more.", "ˌɪt tˈʊk ˈɛɹfs, ðˈɛn mˈɔɹ.", "ˌɪt tˈʊk ˈɔːfs, ðˈɛn mˈɔː."),
-      ("The format is %.2fs here.", "ðə fˈɔɹmˌæt ɪz ˈɛɹfs hˈɪɹ.", "ðə fˈɔːmat ɪz ˈɔːfs hˈɪə."),
+      ("It took %.4fs, then more.", "ˌɪt tˈʊk pəɹsˈɛnt fˈɔɹ ˈɛfs, ðˈɛn mˈɔɹ.", "ˌɪt tˈʊk pəsˈɛnt fˈɔː ˈɛfs, ðˈɛn mˈɔː."),
+      ("The format is %.2fs here.", "ðə fˈɔɹmˌæt ɪz pəɹsˈɛnt tˈu ˈɛfs hˈɪɹ.", "ðə fˈɔːmat ɪz pəsˈɛnt tˈuː ˈɛfs hˈɪə."),
       ("We get `1.23ms`, `1.05ms` and `0.86ms` latency.",
-       "wˌi ɡˈɛt ˈæmdˈæmz, ˈæmdˈæmz ænd ˈæmdˈæmz lˈAtᵊnsi.", "wˌiː ɡˈɛt ˈIkQms, ˈIkQms and ˈIkQms lˈAtᵊnsi.")
+       "wˌi ɡɛt wˈʌn pYnt tˈu θɹˈi ˈɛmz, wˈʌn pYnt zˈɪɹO fˈIv ˈɛmz ænd zˈɪɹO pYnt ˈAt sˈɪks ˈɛmz lˈAtᵊnsi.",
+       "wˌiː ɡɛt wˈʌn pYnt tˈuː θɹˈiː ˈɛmz, wˈʌn pYnt zˈɪəɹQ fˈIv ˈɛmz and zˈɪəɹQ pYnt ˈAt sˈɪks ˈɛmz lˈAtᵊnsi.")
     ])
   }
 
