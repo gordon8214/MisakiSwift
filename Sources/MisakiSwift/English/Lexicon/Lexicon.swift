@@ -1185,16 +1185,23 @@ final class Lexicon {
       }
     } else if is_head, let curr = currency, let units = Lexicon.currencies[curr], isCurrency(word) {
           // Only for the head of a group, which is all that ever came here: a
-          // figure that is not one was a dotted run. A decimal among those is
-          // read as a decimal and not as an amount, because this branch takes
-          // a fraction for a count of cents: "$US105.5" would be "one hundred
-          // five dollars and five cents". That keeps a two-digit fraction out
-          // as well, which would have been right ("$NZ3.20" is "three point
-          // two zero").
+          // figure that is not one was a dotted run, and a whole number that
+          // is not one is still read by the branch above, with no currency.
+          // So a decimal among those is read as a decimal and not as an
+          // amount: "$US105.5" is "one hundred five point five" and "$NZ3.20"
+          // "three point two zero", as "$US105" is "one oh five".
+          // The whole part may be empty and is kept: "$.50" is fifty cents.
+          // Dropped, as `split` drops an empty part unless told otherwise,
+          // the fraction was taken for the whole part, "fifty dollars";
+          // upstream's `split('.')` keeps it. And one digit of a fraction is
+          // tenths: "$1.5" was "one dollar and five cents", as it is
+          // upstream.
           var pairs: [(Int, String)] = []
-          let parts = word.replacingOccurrences(of: ",", with: "").split(separator: ".")
+          let parts = word.replacingOccurrences(of: ",", with: "")
+            .split(separator: ".", omittingEmptySubsequences: false)
           let a = parts.indices.contains(0) ? Int(parts[0]) ?? 0 : 0
-          let b = parts.indices.contains(1) ? Int(parts[1]) ?? 0 : 0
+          let tenths = parts.indices.contains(1) && parts[1].count == 1
+          let b = parts.indices.contains(1) ? (Int(parts[1]) ?? 0) * (tenths ? 10 : 1) : 0
           pairs = [(a, units.0), (b, units.1)].filter { _ in true }
           if pairs.count > 1 {
               if pairs[1].0 == 0 { pairs = Array(pairs.prefix(1)) }

@@ -141,11 +141,9 @@ struct GluedDecimalTests {
 
   /// A figure that carries a currency and is not the head of its group is a
   /// decimal and not an amount. The currency branch was only ever the
-  /// head's, and it takes a fraction for a count of cents: sent there,
-  /// "$US105.5" was "one hundred five dollars and five cents" and "$NZ0.5"
-  /// "five cents". Before, they were "one zero five five" and "zero five".
-  /// The cost is a fraction of two digits, which that branch would have read
-  /// correctly: "$NZ3.20" was "three twenty" and is "three point two zero".
+  /// head's: a whole number that is not a head is read with no currency
+  /// ("$US105" is "one oh five"), so a decimal there is too. Before, these
+  /// were "one zero five five", "zero five" and "three twenty".
   @Test func aDecimalAfterACurrencyCodeIsNotReadAsCents() {
     Self.expectReadings([
       ("Iron ore fetched $US105.5 a tonne.",

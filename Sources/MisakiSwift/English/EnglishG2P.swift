@@ -666,10 +666,20 @@ final public class EnglishG2P {
           }
           token.`_`.rating = 4
         } else if currency != nil {
-          if token.tag != .number {
+          if token.text == "-" {
+            // A hyphen the number run is carried across
+            // (`numberRunContinues`), whatever the tagger called it. As a
+            // hyphen the branch above takes it; as a symbol it came here, and
+            // cleared the currency before "million" could take it.
+          } else if token.tag != .number {
             currency = nil
-          } else if j + 1 == subtokens.count && (i + 1 == tokens.count || tokens[i + 1].tag != .number) {
+          } else if j + 1 == subtokens.count, !numberRunContinues(after: i, in: tokens) {
+            // Given to one figure and no other. It used to stand until a
+            // token that is no number came by, and a mark is not looked at
+            // here, so the next figure across one was an amount too: "$120.50
+            // (2.3%)" read "two dollars and three cents percent".
             token.`_`.currency = currency
+            currency = nil
           }
         } else if j > 0 && j < subtokens.count - 1 && token.text == "2" {
           let prev = subtokens[j - 1].text
@@ -700,6 +710,30 @@ final public class EnglishG2P {
     }
   }
    
+  /// Whether the number run that the token at `index` stands in carries on
+  /// past it: the next token is a number, or a hyphen that joins this one to
+  /// a number word. The currency goes to the last number of a run, so that
+  /// "$1.5 billion" says its dollars after "billion".
+  ///
+  /// The hyphen is looked past because spaCy cuts "$5-million" into "$",
+  /// "5", "-" and "million", and the figure used to be the run's end: it took
+  /// the currency, and "million" took it again while it stood ("five dollars
+  /// million dollars"). Only before a scale the tagger calls a number. Before
+  /// a figure the hyphen is a range's, and each end of "$5-10" is read as it
+  /// was; before any other number word it joins a compound ("a $5-one-way
+  /// fare").
+  private func numberRunContinues(after index: Int, in tokens: [MToken]) -> Bool {
+    guard index + 1 < tokens.count else { return false }
+    if tokens[index + 1].tag == .number { return true }
+    guard index + 2 < tokens.count, tokens[index + 1].text == "-",
+          tokens[index].whitespace.isEmpty, tokens[index + 1].whitespace.isEmpty else { return false }
+    let word = tokens[index + 2]
+    return word.tag == .number && EnglishG2P.scales.contains(word.text.lowercased())
+  }
+
+  /// The number words an amount's figure is counted in.
+  static let scales: Set<String> = ["hundred", "thousand", "million", "billion", "trillion"]
+
   /// Possessive clitics, the only ones re-derived after a forced span. The
   /// others (`'d` / `'ll` / `'re` / `'ve`) are conditioned on their host too
   /// (see `ContractionClitics`), but a span splits them off their host's
