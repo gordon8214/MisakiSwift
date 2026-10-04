@@ -305,6 +305,7 @@ final class Lexicon {
   ) -> (phoneme: String?, rating: Int?) {
     let sc = getSpecialCase(word, tag: tag, stress: stress, ctx: ctx, isHead: isHead)
     if sc.phoneme != nil { return sc }
+    if let system = operatingSystemName(word, tag: tag, ctx: ctx, isHead: isHead) { return system }
     var candidate = word
     let wl = word.lowercased()
     let nameTagKeepsCase = tag.isProperNoun && word.count <= 7
@@ -349,6 +350,67 @@ final class Lexicon {
     return stem_contraction(candidate, tag: tag, stress: stress, ctx: ctx)
   }
   
+  /// The capitalized OS suffix of an operating-system name denotes letters,
+  /// not gold's anatomical "os". At 3617c2d a tagger-selected adjective made
+  /// visionOS/WatchOS end in `ˌɑs` / `ˌɒs`, and tvOS needed BART outright.
+  /// Read the prefix by its lexicon entry (or a short initialism's letters),
+  /// and the suffix by the same letter speller as standalone OS. Existing
+  /// whole-word entries win, so CHAOS/pathOS and listed iOS stay untouched.
+  private func operatingSystemName(
+    _ word: String, tag: EnglishPOSTag, ctx: TokenContext, isHead: Bool
+  ) -> (phoneme: String?, rating: Int?)? {
+    var base = word
+    var plural = false
+    if base.hasSuffix("'s") {
+      base = String(base.dropLast(2))
+      plural = true
+    } else if base.hasSuffix("OSes") {
+      base = String(base.dropLast(2))
+      plural = true
+    }
+    if base == "OS", isHead, let reading = getNNP(base).phoneme {
+      return (reading + (plural ? sibilantSuffix(after: reading) : ""), 3)
+    }
+    guard base.hasSuffix("OS"), base.count > 2,
+          base.allSatisfy(\.isLetter),
+          golds[base] == nil, silvers[base] == nil,
+          golds[base.lowercased()] == nil, silvers[base.lowercased()] == nil else { return nil }
+    let wordTag = EnglishPOSTag(lexicalClass: .noun, penn: "NN")
+    // A listed inflection is a word too (ZEROS, JUNOS), not an OS suffix.
+    guard getWord(base.lowercased(), tag: wordTag, stress: nil, ctx: ctx).phoneme == nil else { return nil }
+    let prefix = String(base.dropLast(2))
+    // An uninterrupted all-caps spelling has no OS boundary: CHRONOS is a
+    // Greek name too. Leave its existing whole-word/initialism path intact;
+    // TVOS already spells correctly there, while tvOS supplies a boundary.
+    guard prefix.contains(where: \.isLowercase) else { return nil }
+    let lower = prefix.lowercased()
+    var prefixReading: String?
+    var rating: Int? = 3
+    let letters = Array(prefix)
+    if letters.count > 2, letters[1].isUppercase,
+       letters.dropFirst(2).allSatisfy(\.isLowercase),
+       let initial = getNNP(String(letters[0]).uppercased()).phoneme,
+       let rest = getWord(String(prefix.dropFirst()).lowercased(), tag: tag, stress: nil, ctx: ctx).phoneme {
+      // A camel-case initial followed by a word (iPadOS): keep the same
+      // internal stress as the existing three-part group, not a stemmer's
+      // lowercase reading of "ipad" (IPA plus a past-tense d).
+      prefixReading = Self.applyStress(initial, stress: 0).map { $0 + rest }
+    } else {
+      let head = getWord(lower, tag: tag, stress: nil, ctx: ctx)
+      rating = head.rating ?? 3
+      if let headPhonemes = head.phoneme {
+        prefixReading = Self.applyStress(headPhonemes, stress: -0.5)
+      } else if prefix.count <= 3, let spelled = getNNP(prefix.uppercased() + "OS").phoneme {
+        // Spell the short initialism and OS together, retaining every
+        // letter's secondary stress (TVOS is the measured oracle for tvOS).
+        return (spelled + (plural ? sibilantSuffix(after: spelled) : ""), 3)
+      }
+    }
+    guard let prefixReading, let suffixReading = getNNP("OS").phoneme else { return nil }
+    let reading = prefixReading + suffixReading
+    return (reading + (plural ? sibilantSuffix(after: reading) : ""), rating)
+  }
+
   /// Whether an all-caps token is no longer kept off `getWord`'s lowercase
   /// path by an NNP tag: four letters or more, counted before any apostrophe,
   /// or a contraction. The lowercase path still needs a lowercase reading to
