@@ -95,8 +95,7 @@ struct GluedDecimalTests {
   }
 
   /// Every comma of a grouped whole part is dropped, as the head's are. Only
-  /// the point is asserted: the whole part is seven digits, and the cardinal
-  /// reads a million through "thousand" twice, for a head as well.
+  /// the point is asserted; `CardinalMillionTests` has the whole part.
   @Test func aWholePartGroupedTwiceIsStillADecimal() {
     for british in [false, true] {
       let reading = EnglishG2P(british: british).phonemize(text: "It cost +1,234,567.5 today.").0

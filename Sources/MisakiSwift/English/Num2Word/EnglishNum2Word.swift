@@ -35,23 +35,23 @@ struct EnglishNum2Word {
     "ten": "tenth", "eleven": "eleventh", "twelve": "twelfth"
   ]
   
-  private var cards: [Int: String] = [:]
-  
+  /// The powers of a thousand an `Int` holds, largest first: a quintillion
+  /// down to a thousand.
+  private let scales: [(Int, String)]
+
   init() {
-    // Initialize high number words
-    var cards: [Int: String] = [:]
+    var scales: [(Int, String)] = [(1000, "thousand")]
     let highWords = ["m", "b", "tr", "quadr", "quint", "sext", "sept", "oct", "non", "dec"]
     for (index, word) in highWords.enumerated() {
       let power = 6 + (index * 3)
       let val = pow(10.0, Double(power))
       if val <= Double(Int.max) {
-        let intVal: Int = Int(val)
-        cards[intVal] = word + "illion"
+        scales.append((Int(val), word + "illion"))
       } else {
         // Currently really, really large numbers are not handled
-      }      
+      }
     }
-    self.cards = cards
+    self.scales = scales.reversed()
   }
   
   private func merge(_ lPair: (String, Int), _ rPair: (String, Int)) -> (String, Int) {
@@ -137,34 +137,17 @@ struct EnglishNum2Word {
       }
     }
     
-    // Handle thousands and higher
-    for (value, word) in midNumWords.sorted(by: { $0.0 > $1.0 }) {
-      if number >= value {
-        let quotient = number / value
-        let remainder = number % value
-        let quotientWord = toCardinal(quotient)
-        if remainder == 0 {
-          return "\(quotientWord) \(word)"
-        } else {
-          return "\(quotientWord) \(word), \(toCardinal(remainder))"
-        }
-      }
+    // By the largest power of a thousand the number reaches. The thousands
+    // used to be tried before the millions, and every number of 1,000 or more
+    // is a count of thousands, so a million was never named: 5,000,000 read
+    // "five thousand thousand" and 1,234,567 "one thousand two hundred
+    // thirty-four thousand…".
+    for (value, word) in scales where number >= value {
+      let quotientWord = toCardinal(number / value)
+      let remainder = number % value
+      return remainder == 0 ? "\(quotientWord) \(word)" : "\(quotientWord) \(word), \(toCardinal(remainder))"
     }
-    
-    // Handle very large numbers using cards
-    for (value, word) in cards.sorted(by: { $0.key > $1.key }) {
-      if number >= value {
-        let quotient = number / value
-        let remainder = number % value
-        let quotientWord = toCardinal(quotient)
-        if remainder == 0 {
-          return "\(quotientWord) \(word)"
-        } else {
-          return "\(quotientWord) \(word), \(toCardinal(remainder))"
-        }
-      }
-    }
-    
+
     return ""
   }
   

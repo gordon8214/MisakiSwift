@@ -37,6 +37,12 @@ final class Lexicon {
     for key in Lexicon.truncatedCompoundGolds(british: british) { rawGolds.removeValue(forKey: key) }
     rawGolds.merge(Lexicon.supplementalGolds(british: british)) { _, supplement in supplement }
     let rawSilvers = DataResourcesUtil.loadSilver(british: british)
+    // The ordinals of the two largest powers an `Int` holds. Gold has "millionth",
+    // "billionth" and "trillionth"; without these a cardinal that names its
+    // quadrillion has an ordinal that is spelled letter by letter.
+    for power in ["quadrillion", "quintillion"] where rawGolds[power + "th"] == nil {
+      if let reading = rawGolds[power] as? String { rawGolds[power + "th"] = reading + "θ" }
+    }
     self.golds = Lexicon.growDictionary(rawGolds)
     self.silvers = Lexicon.growDictionary(rawSilvers)
     self.contractions = ContractionClitics(golds: self.golds)
