@@ -983,6 +983,38 @@ final class Lexicon {
   private func isPlainDigits(_ string: String) -> Bool {
     return !string.isEmpty && string.allSatisfy { $0.isNumber }
   }
+
+  /// Whether a figure that is not the head of its subtoken group is a decimal
+  /// and is read as one: digits on both sides of one point ("0.12",
+  /// "1,234.5"; its commas are dropped, as the head's are) that
+  /// `convert(decimalText:)` has a reading for.
+  ///
+  /// It is what keeps a decimal out of `getNumber`'s dotted-run branch.
+  /// Upstream sends every figure that is not a head there
+  /// (`word.count('.') > 1 or not is_head`), and that branch reads the parts
+  /// between the dots as numbers of their own, with no "point": after a
+  /// sign, a hyphen or a letter, "+0.12" was "plus zero twelve", "GPT-4.5"
+  /// "four five", "+6.77x" "six seventy seven" and "v10.25" "ten twenty
+  /// five". A decimal is the same figure wherever it stands in its group, so
+  /// it is read as the head of one is, to the head's bound: a fraction stops
+  /// at its twenty-fourth digit, where the dotted run read every one. Except
+  /// as an amount: the currency branch of `getNumber` is still the head's.
+  ///
+  /// Three shapes stay dotted runs, read as they were. A point with no digit
+  /// in front closes an abbreviation after a letter more often than it opens
+  /// a fraction ("H.264"), so "+.5" is still "plus five". A whole part
+  /// written with a zero in front of it is a code and not a value ("E08.9",
+  /// "S01.5", "+00.5"), and a decimal reads no such zero: "E eight point
+  /// nine" is another code. And what the reader refuses has no reading as a
+  /// decimal, so that sent on as one it would take its whole group to the
+  /// fallback: a whole part past `Int`, and a numeric character that is not
+  /// one of the ten digits.
+  private func isDecimal(_ word: String) -> Bool {
+    let digits = word.replacingOccurrences(of: ",", with: "")
+    let whole = digits.prefix(while: { $0 != "." })
+    if whole.count > 1, whole.first == "0" { return false }
+    return num2Words.convert(decimalText: digits) != nil
+  }
   
   private func getNumber(_ input: String, currency: String?, is_head: Bool, num_flags: String) -> (String?, Int?) {
     var result: [(String, Int)] = []
@@ -1059,7 +1091,7 @@ final class Lexicon {
       } else {
         extend_num(num)
       }
-    } else if word.filter({ $0 == "." }).count > 1 || !is_head {
+    } else if word.filter({ $0 == "." }).count > 1 || (!is_head && !isDecimal(word)) {
       var first = true
       for num in word.replacingOccurrences(of: ",", with: "").split(separator: ".").map(String.init) {
         if num.isEmpty {}
@@ -1072,7 +1104,14 @@ final class Lexicon {
         }
         first = false
       }
-    } else if let curr = currency, let units = Lexicon.currencies[curr], isCurrency(word) {
+    } else if is_head, let curr = currency, let units = Lexicon.currencies[curr], isCurrency(word) {
+          // Only for the head of a group, which is all that ever came here: a
+          // figure that is not one was a dotted run. A decimal among those is
+          // read as a decimal and not as an amount, because this branch takes
+          // a fraction for a count of cents: "$US105.5" would be "one hundred
+          // five dollars and five cents". That keeps a two-digit fraction out
+          // as well, which would have been right ("$NZ3.20" is "three point
+          // two zero").
           var pairs: [(Int, String)] = []
           let parts = word.replacingOccurrences(of: ",", with: "").split(separator: ".")
           let a = parts.indices.contains(0) ? Int(parts[0]) ?? 0 : 0
