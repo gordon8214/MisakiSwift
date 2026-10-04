@@ -127,7 +127,13 @@ struct ContractionClitics {
   /// The whole contraction: `phonemes`, the reading of a host spelled `host`,
   /// joined to `clitic`. Nil where the lexicon supplied nothing to derive the
   /// clitic from.
-  func reading(of clitic: String, afterHost host: String, phonemes: String, british: Bool) -> String? {
+  func reading(
+    of clitic: String,
+    afterHost host: String,
+    phonemes: String,
+    british: Bool,
+    preserveHost: Bool = false
+  ) -> String? {
     guard let final = phonemes.last else { return nil }
     let lowerHost = host.lowercased()
     let endsInVowel = Lexicon.vowelSet.contains(final) || final == "ː"
@@ -166,7 +172,7 @@ struct ContractionClitics {
     // A listed clitic is appended exactly as the grouped word appended it, so
     // every contraction that already read correctly reads byte-identically.
     guard !listed, vowelInitial else { return phonemes + suffix }
-    return Self.flapped(phonemes, british: british) + suffix
+    return (preserveHost ? phonemes : Self.flapped(phonemes, british: british)) + suffix
   }
 
   /// Whether `clitic` is read from the lexicon's own listing rather than

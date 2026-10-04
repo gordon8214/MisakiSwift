@@ -62,29 +62,43 @@ struct ForcedSpanPossessiveTests {
     #expect(g2p.phonemize(text: "the [dog](/dˈɔɡ/)\u{2019}s bone").0 == "ðə dˈɔɡz bˈOn")
   }
 
-  /// The bound: only the possessive is re-derived. `'d` / `'ll` / `'re` /
-  /// `'ve` are left exactly as they were — these values are byte-identical
-  /// before and after the change, and after `ContractionClitics`, whose
-  /// readings reach a contraction only through its host's group.
-  ///
-  /// They are NOT the bare readings, and deliberately so: a forced span breaks
-  /// the contraction out of its lexicon entry entirely (`they're` is `ðɛɹ`,
-  /// `[they](/ðˈA/)'re` is `ðˈAɹˌA`), which is the same group-splitting root
-  /// cause reaching a different clitic class. That is a separate defect with
-  /// no reported symptom and a much larger fix — pinned here so it cannot
-  /// drift silently, not endorsed.
-  @Test func theFixedCliticsAreLeftAlone() {
-    let fixtures: [(text: String, expected: String)] = [
-      ("[they](/ðˈA/)'ll go", "ðˈAəl ɡˌO"),
-      ("[they](/ðˈA/)'ve gone", "ðˈAvˈiv ɡˈɔn"),
-      ("[they](/ðˈA/)'re here", "ðˈAɹˌA hˈɪɹ"),
-      ("[they](/ðˈA/)'d go", "ðˈAd ɡˌO")
+  /// Every clitic is derived from the same lexicon contractions as a bare
+  /// host, while its forced reading (including a final unflapped t) stays
+  /// exact. At 3617c2d `'ve` named letters and `'re` named the musical note.
+  @Test func theOtherCliticsAreDerivedFromTheForcedHost() {
+    let fixtures: [(text: String, american: String, british: String)] = [
+      ("[they](/ðˈA/)'ll go", "ðˈAəl ɡˌO", "ðˈAl ɡˌQ"),
+      ("[they](/ðˈA/)'ve gone", "ðˈAv ɡˈɔn", "ðˈAv ɡˈɒn"),
+      ("[they](/ðˈA/)'re here", "ðˈAəɹ hˈɪɹ", "ðˈAə hˈɪə"),
+      ("[they](/ðˈA/)'d go", "ðˈAd ɡˌO", "ðˈAd ɡˌQ"),
+      ("[it](/ɪt/)'d go", "ɪtəd ɡˌO", "ɪtəd ɡˌQ"),
+      ("[Verizon](/vəɹˈIzᵊn/)†'ve gone", "vəɹˈIzᵊnəv ɡˈɔn", "vəɹˈIzᵊnəv ɡˈɒn")
     ]
-    let g2p = EnglishG2P(british: false)
-
-    for fixture in fixtures {
-      #expect(g2p.phonemize(text: fixture.text).0 == fixture.expected,
-              "\(fixture.text.debugDescription) moved")
+    for british in [false, true] {
+      let processor = EnglishG2P(british: british)
+      for fixture in fixtures {
+        #expect(processor.phonemize(text: fixture.text).0 == (british ? fixture.british : fixture.american))
+        let curly = fixture.text.replacingOccurrences(of: "'", with: "’")
+        #expect(processor.phonemize(text: curly).0 == (british ? fixture.british : fixture.american))
+      }
     }
+  }
+
+  @Test func aBareApostropheAfterAForcedSpanHasNoLetterReading() {
+    for british in [false, true] {
+      let processor = EnglishG2P(british: british)
+      for apostrophe in ["'", "’", "‘"] {
+        #expect(processor.phonemize(text: "The [word](/wɜɹd/)\(apostrophe) complaint.").0
+                  == "ðə wɜɹd kəmplˈAnt.")
+      }
+    }
+  }
+
+  /// Adjacency and rating-5 are the scope: a separated clitic keeps its own
+  /// reading, and ordinary lexicon contractions retain their own flapping.
+  @Test func aSeparatedCliticAndAnUnforcedHostKeepTheirReadings() {
+    let american = EnglishG2P()
+    #expect(american.phonemize(text: "[Verizon](/vəɹˈIzᵊn/) 've gone").0 == "vəɹˈIzᵊn vˈiv ɡˈɔn")
+    #expect(american.phonemize(text: "it'd go").0 == "ˈɪTəd ɡˌO")
   }
 }

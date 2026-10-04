@@ -280,21 +280,15 @@ struct GluedSpanTests {
     ])
   }
 
-  /// What a cut piece reads as is its own reading, and for these it is not
-  /// the right one. They are pinned so they cannot drift, not endorsed.
-  ///
-  /// A clitic after a span reads as it already did where spaCy cuts it off
-  /// itself: "[they](/ðˈA/)'ll" and "[Verizon](/…/)'ll" now agree, British
-  /// `ˌiːl` and all, where the second had no clitic. `ForcedSpanPossessiveTests`
-  /// pins the first and says why it is a fault of its own. A bare "s" is the
-  /// letter: only the possessive is re-derived from the span's last sound.
-  @Test func aCutPieceReadsAsItReadsAlone() {
+  /// The forced host keeps its reading and contributes the sound that
+  /// conditions its clitic. A bare s remains the letter, not a possessive.
+  @Test func aCutCliticIsReadFromItsHost() {
     Self.expectReadings([
-      ("[Verizon](/vəɹˈIzᵊn/)'ll go.", "vəɹˈIzᵊnəl ɡˌO.", "vəɹˈIzᵊnˌiːl ɡˌQ."),
-      ("[they](/ðˈA/)'ll go.", "ðˈAəl ɡˌO.", "ðˈAˌiːl ɡˌQ."),
-      ("[Verizon](/vəɹˈIzᵊn/)'ve gone.", "vəɹˈIzᵊnvˈiv ɡˈɔn.", "vəɹˈIzᵊnvˈA ɡˈɒn."),
-      ("[they](/ðˈA/)'ve gone.", "ðˈAvˈiv ɡˈɔn.", "ðˈAvˈA ɡˈɒn."),
-      ("[Verizon](/vəɹˈIzᵊn/)'re here.", "vəɹˈIzᵊnɹˌA hˈɪɹ.", "vəɹˈIzᵊnɹˌA hˈɪə."),
+      ("[Verizon](/vəɹˈIzᵊn/)'ll go.", "vəɹˈIzᵊnəl ɡˌO.", "vəɹˈIzᵊnᵊl ɡˌQ."),
+      ("[they](/ðˈA/)'ll go.", "ðˈAəl ɡˌO.", "ðˈAl ɡˌQ."),
+      ("[Verizon](/vəɹˈIzᵊn/)'ve gone.", "vəɹˈIzᵊnəv ɡˈɔn.", "vəɹˈIzᵊnəv ɡˈɒn."),
+      ("[they](/ðˈA/)'ve gone.", "ðˈAv ɡˈɔn.", "ðˈAv ɡˈɒn."),
+      ("[Verizon](/vəɹˈIzᵊn/)'re here.", "vəɹˈIzᵊnəɹ hˈɪɹ.", "vəɹˈIzᵊnə hˈɪə."),
       ("A [word](/wˈɜɹd/)s here.", "ɐ wˈɜɹdˈɛs hˈɪɹ.", "ɐ wˈɜɹdˈɛs hˈɪə.")
     ])
   }

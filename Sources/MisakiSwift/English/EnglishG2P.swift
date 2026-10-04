@@ -796,44 +796,23 @@ final public class EnglishG2P {
   /// The number words an amount's figure is counted in.
   static let scales: Set<String> = ["hundred", "thousand", "million", "billion", "trillion"]
 
-  /// Possessive clitics, the only ones re-derived after a forced span. The
-  /// others (`'d` / `'ll` / `'re` / `'ve`) are conditioned on their host too
-  /// (see `ContractionClitics`), but a span splits them off their host's
-  /// group, a separate residual `ForcedSpanPossessiveTests` pins.
-  static let possessiveClitics: Set<String> = ["'s", "\u{2019}s", "\u{2018}s"]
-
-  /// Re-derives a possessive clitic that was split off from a forced-phoneme
-  /// span, through the lexicon's own voicing rule.
-  ///
-  /// A `[word](/ipa/)` span sets `phonemes` directly, and `retokenize` gives a
-  /// token that already has phonemes a group of its own — so the `'s` that
-  /// followed it is no longer in the stem's subtoken group and gets resolved
-  /// alone, as a Particle, which returns a literal `s`. Without markup the
-  /// whole of `dog's` stays one token and `stem_s` applies `pluralizeS`, which
-  /// is why only this path is wrong:
-  ///
-  ///     dog's                    dˈɔɡz     [dog](/dˈɔɡ/)'s      dˈɔɡs
-  ///     bus's                    bˈʌsᵻz    [bus](/bˈʌs/)'s      bˈʌss
-  ///     church's                 ʧˈɜɹʧᵻz   [church](/ʧˈɜɹʧ/)'s  ʧˈɜɹʧs
-  ///
-  /// A voiceless final was right by accident; a voiced one lost its voicing;
-  /// and a sibilant one produced a doubled sibilant with no epenthetic vowel,
-  /// which is the case `pluralizeS` exists for. The stem is taken from the
-  /// phonemes actually emitted rather than from the lexicon, because a forced
-  /// span has no lexicon entry to consult — that is the whole point of it.
-  ///
-  /// Runs before the `ɾ`/`ʔ` mapping so the rule sees the same alphabet
-  /// `pluralizeS` was written against.
-  ///
-  /// Scoped by `rating == 5`, which only the forced-phoneme alignment sets, so
-  /// no lexicon-resolved possessive can reach this.
-  private func revoicePossessiveAfterForcedPhonemes(_ tokens: [MToken]) {
+  /// Re-derives a clitic separated from its host by a forced-phoneme span.
+  /// At 3617c2d only `'s` did this: `'ve` was BART's `vˈiv` / `vˈA`, `'re`
+  /// gold's musical note `ɹˌA`, British `'ll` `ˌiːl`, and `'d` after t/d
+  /// fused into the stop. A bare apostrophe could be BART's `dˈi` too.
+  /// The suffixes are derived from the lexicon's own contractions, using the
+  /// forced host's actual final sound; its reading must stay exactly forced.
+  /// Only adjoining rating-5 spans qualify, before the ɾ/ʔ output mapping.
+  private func revoiceCliticAfterForcedPhonemes(_ tokens: [MToken]) {
     guard tokens.count > 1 else { return }
     for i in 1..<tokens.count {
       let clitic = tokens[i]
-      guard EnglishG2P.possessiveClitics.contains(clitic.text.lowercased()) else { continue }
-      // A piece `cutTokens` emptied may stand between the two: a dagger
-      // after the name, "[Bose](/bˈOz/)†'s", left the clitic `s` (`bˈOzs`).
+      let text = clitic.text.lowercased()
+        .replacingOccurrences(of: "’", with: "'")
+        .replacingOccurrences(of: "‘", with: "'")
+      guard ["'", "'s", "'ve", "'re", "'ll", "'d", "n't"].contains(text) else { continue }
+      // A zero-reading piece cut off a forced span (e.g. a dagger) need
+      // not keep its adjoining clitic from the host.
       var stemIndex = i - 1
       while stemIndex > 0, tokens[stemIndex].phonemes == "", tokens[stemIndex].whitespace.isEmpty,
             tokens[stemIndex].`_`.rating == 3 {
@@ -844,7 +823,19 @@ final public class EnglishG2P {
             stem.whitespace.isEmpty,
             let stemPhonemes = stem.phonemes,
             !stemPhonemes.isEmpty else { continue }
-      clitic.phonemes = lexicon.sibilantSuffix(after: stemPhonemes)
+      if text == "'" {
+        clitic.phonemes = ""
+      } else if text == "'s" {
+        clitic.phonemes = lexicon.sibilantSuffix(after: stemPhonemes)
+      } else if let whole = lexicon.contractions.reading(
+        of: text == "n't" ? text : String(text.dropFirst()),
+        afterHost: stem.text,
+        phonemes: stemPhonemes,
+        british: british,
+        preserveHost: true
+      ) {
+        clitic.phonemes = String(whole.dropFirst(stemPhonemes.count))
+      }
     }
   }
 
@@ -1009,7 +1000,7 @@ final public class EnglishG2P {
       return item as! MToken
     }
         
-    revoicePossessiveAfterForcedPhonemes(finalTokens)
+    revoiceCliticAfterForcedPhonemes(finalTokens)
 
     for i in 0..<finalTokens.count {
       if var ps = finalTokens[i].phonemes, !ps.isEmpty {
