@@ -92,8 +92,9 @@ struct GroupTrailingSpaceTests {
   /// only break it had (over 40 lines, 108 ms of silence with it and 30 ms
   /// without), and it is not kept, because it was never the dash's reading:
   /// the same pair stood beside every brace. A caller spells the dash "—".
-  /// The signed figure is erased whole, a fault of its own that the pair hid
-  /// no better.
+  /// A signed figure the tagger called punctuation was a row here too,
+  /// erased whole ("It moved -3 today." was `mˈuvd  tədˈA`); it is read now
+  /// (`FigureTagTests`).
   @Test func aTokenWithNoReadingLeavesOneSpace() {
     Self.expectReadings([
       // `ðə  slˈæʃ ʧˈʌŋk  flˈæɡ`.
@@ -108,9 +109,7 @@ struct GroupTrailingSpaceTests {
       // `fˌɪftˈinz  tə`.
       ("It took 15s` to run.", "ˌɪt tˈʊk fˌɪftˈinz tə ɹˈʌn.", "ˌɪt tˈʊk fˌɪftˈiːnz tə ɹˈʌn."),
       // `mˈɑɹkət  wˌɪʧ fˈɛl  ɹˈOz`.
-      ("The market -- which fell -- rose.", "ðə mˈɑɹkət wˌɪʧ fˈɛl ɹˈOz.", "ðə mˈɑːkɪt wˌɪʧ fˈɛl ɹˈQz."),
-      // `mˈuvd  tədˈA`.
-      ("It moved -3 today.", "ˌɪt mˈuvd tədˈA.", "ˌɪt mˈuːvd tədˈA.")
+      ("The market -- which fell -- rose.", "ðə mˈɑɹkət wˌɪʧ fˈɛl ɹˈOz.", "ðə mˈɑːkɪt wˌɪʧ fˈɛl ɹˈQz.")
     ])
   }
 

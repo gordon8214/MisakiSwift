@@ -88,6 +88,61 @@ struct DottedAcronymTests {
     ])
   }
 
+  /// Whatever the tagger called the token. A token of the shape is never cut,
+  /// so it kept the tagger's tag, and under punctuation it was its own dots:
+  /// `wˌʌz ɪt .?` (three times), `ˈOnli . ɹəmˈAnd.` and `.tˈOkᵊn pɹˈɑmpts
+  /// hˈɛld.` One whose figure stands in front of its letters is a number
+  /// now, as a figure cut from a token is, and one that holds a figure
+  /// behind a letter a word.
+  @Test func aTokenOfTheShapeIsReadWhateverTheTaggerCalledIt() {
+    Self.expectReadings([
+      ("Was it v2.0?", "wˌʌz ɪt vˈi tˈu pYnt zˈɪɹO?", "wˌɒz ɪt vˈiː tˈuː pYnt zˈɪəɹQ?"),
+      ("Was it 0.5x?", "wˌʌz ɪt zˈɪɹO pYnt fˈIv ˈɛks?", "wˌɒz ɪt zˈɪəɹQ pYnt fˈIv ˈɛks?"),
+      ("Was it JN.1?", "wˌʌz ɪt ʤˌAˈɛn wˈʌn?", "wˌɒz ɪt ʤˌAˈɛn wˈʌn?"),
+      ("Only pp.12 remained.", "ˈOnli pˌipˈi twˈɛlv ɹəmˈAnd.", "ˈQnli pˌiːpˈiː twˈɛlv ɹɪmˈAnd."),
+      ("~6.5K-token prompts held.",
+       "sˈɪks pYnt fˈIv kˈAtˈOkᵊn pɹˈɑmpts hˈɛld.", "sˈɪks pYnt fˈIv kˈAtˈQkᵊn pɹˈɒmpts hˈɛld.")
+    ])
+  }
+
+  /// The same, under every tag `retokenize` reads as punctuation or as a
+  /// dash: the token comes back whole and unread. One whose figure stands
+  /// in front of its letters is a number under any tag, whatever marks open
+  /// it. One that holds a figure behind a letter is a noun under those tags
+  /// and keeps a word's or a number's own, so that a currency sign in front
+  /// of it finds what the tagger found. One with no figure in it keeps the
+  /// tag it had.
+  @Test func aTokenOfTheShapeThatHoldsAFigureIsReTaggedOverEveryTag() {
+    let g2p = EnglishG2P(british: false)
+    func retagged(_ text: String, under tag: String) -> (tag: String?, phonemes: String?, text: String?) {
+      let token = MToken(
+        text: text, tokenRange: text.startIndex..<text.endIndex,
+        tag: SpacyEnglishTagger.lexicalClass(for: tag), whitespace: ""
+      )
+      var pennTags: PennTagMap = [ObjectIdentifier(token): tag]
+      let whole = g2p.retokenize([token], pennTags: &pennTags).first as? MToken
+      return (whole.flatMap { pennTags[ObjectIdentifier($0)] }, whole?.phonemes, whole?.text)
+    }
+    let marks = [".", ",", ":", "-LRB-", "-RRB-", "``", "''", "NFP", "HYPH"]
+    for tag in marks + ["SYM", "NN", "NNP", "UH", "CD"] {
+      for text in ["0.5x", "1.5B", "-1.5x", "+1.5B", "-.5x", "~.5x", "#1.x"] {
+        let result = retagged(text, under: tag)
+        #expect(result.text == text, "\(text) under \(tag) was cut")
+        #expect(result.phonemes == nil, "\(text) under \(tag) was read as a mark")
+        #expect(result.tag == "CD", "\(text) under \(tag) is not CD")
+      }
+      for text in ["v2.0", "pp.12", "No.5"] {
+        let result = retagged(text, under: tag)
+        #expect(result.text == text, "\(text) under \(tag) was cut")
+        #expect(result.phonemes == nil, "\(text) under \(tag) was read as a mark")
+        #expect(result.tag == (marks.contains(tag) ? "NN" : tag), "\(text) under \(tag) is \(result.tag ?? "nil")")
+      }
+    }
+    #expect(retagged("U.S.", under: "NNP").tag == "NNP")
+    #expect(retagged("e.g.", under: "FW").tag == "FW")
+    #expect(retagged("U.S.", under: ".").tag == ".")
+  }
+
   /// The reading is rated by its least sure piece, and the letters are a
   /// spelling's: no better than `getNNP`'s 3, and never the fallback's 1.
   @Test func theReadingIsRatedAsASpellingIs() {
@@ -101,12 +156,15 @@ struct DottedAcronymTests {
   /// (`ˈɛks` alone before), and a zero in front of it is no code's ("zero
   /// seven five" is what a figure that is no head would be). A file's version
   /// keeps its figure, the extension still spelled (`vˌipˌiwˈI`), and a
-  /// version's wildcard was `ˈɛks` alone.
+  /// version's wildcard was `ˈɛks` alone. A mark with no reading in front of
+  /// the figure does not stop it heading: "~.5x" was `.` and is "point
+  /// five", where the ".5" of "No.5", after letters, is "five".
   @Test func aSignAWildcardAndAnExtensionAreRead() {
     Self.expectReadings([
       ("It moved -1.5x today.",
        "ˌɪt mˈuvd mˈInəs wˈʌn pYnt fˈIv ˈɛks tədˈA.", "ˌɪt mˈuːvd mˈInəs wˈʌn pYnt fˈIv ˈɛks tədˈA."),
       ("It is 07.5x here.", "ˌɪt ɪz sˈɛvən pYnt fˈIv ˈɛks hˈɪɹ.", "ˌɪt ɪz sˈɛvᵊn pYnt fˈIv ˈɛks hˈɪə."),
+      ("It is ~.5x here.", "ˌɪt ɪz pYnt fˈIv ˈɛks hˈɪɹ.", "ˌɪt ɪz pYnt fˈIv ˈɛks hˈɪə."),
       ("Run v2.py today.", "ɹˈʌn vˈi tˈu pˌiwˈI tədˈA.", "ɹˈʌn vˈiː tˈuː pˌiːwˈI tədˈA."),
       ("Use TensorFlow 2.x today.", "jˈus tˈɛnsəɹflˌO tˈu ˈɛks tədˈA.", "jˈuːs tˈɛnsəflˌQ tˈuː ˈɛks tədˈA.")
     ])

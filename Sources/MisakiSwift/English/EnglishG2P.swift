@@ -497,7 +497,42 @@ final public class EnglishG2P {
     }
   }
 
-  private func refinedPennTag(for subtoken: String, inherited pennTag: String?) -> String? {
+  /// Whether a subtoken is a figure: what the subtokenizer's number pattern
+  /// cuts, which is digits with the commas and points it keeps among and in
+  /// front of them ("1,234.5", ".5"), ending on a digit, and the hyphen it
+  /// keeps in front of one that opens its token ("-10.25").
+  ///
+  /// A figure is a number whatever the tagger called the token it stands in.
+  /// A subtoken takes its token's tag, and the tagger decides that by the
+  /// sentence. Where it calls the token punctuation the subtoken is read as
+  /// the marks in it, which made of a figure its own point or comma, or
+  /// nothing: "It moved -10.25 today." was `ˌɪt mˈuvd . tədˈA.`, "It took
+  /// ~1,250 ms" `, ˈɛmz` and "It moved -3 today." `ˌɪt mˈuvd tədˈA.`. Where
+  /// it calls it a hyphen the figure was the pause of a dash ("A -8% drop",
+  /// `ɐ —pəɹsˈɛnt dɹˈɑp`), and where it calls it anything but a number a
+  /// currency sign in front was dropped ("$12,345.67" could read with no
+  /// "dollars"). Only a run of bare digits was re-tagged, so a figure with a
+  /// sign, a point or a comma was the tagger's, and it needed no sign: the
+  /// mantissa of "999.99e+04", the "14.96" of "GPT-14.96." and the ".1.16"
+  /// of "XBB.1.16" went the same way. Upstream misaki has the same branch
+  /// and re-tags nothing.
+  ///
+  /// A re-tagged figure heads or joins a subtoken group where it used to
+  /// stand alone as its mark, so what is glued to it is read with it. That
+  /// has one cost. A group with a part no lexicon branch reads goes to the
+  /// fallback whole, which has no digits: the precision of a format
+  /// specifier joins the letters after it, and "It took %.4fs" is the
+  /// fallback's `ˈɛɹfs` where the tagger used to cut it into `pəɹsˈɛnt.ˈɛfs`.
+  /// Where the tagger calls that precision a word the specifier always read
+  /// so ("Print %.2fs here.").
+  static func isFigure(_ subtoken: String) -> Bool {
+    let digits = subtoken.hasPrefix("-") ? subtoken.dropFirst() : Substring(subtoken)
+    return digits.last?.isNumber == true && digits.allSatisfy { $0.isNumber || $0 == "," || $0 == "." }
+  }
+
+  /// - Parameter joinsGroup: whether the subtoken opens a token that runs on
+  ///   from the subtoken group before it, with no whitespace between.
+  private func refinedPennTag(for subtoken: String, inherited pennTag: String?, joinsGroup: Bool) -> String? {
     switch subtoken {
     case "(": return "-LRB-"
     case ")": return "-RRB-"
@@ -513,7 +548,13 @@ final public class EnglishG2P {
       if subtoken.allSatisfy(\.isWhitespace) {
         return "_SP"
       }
-      if !subtoken.isEmpty, subtoken.allSatisfy(\.isNumber) {
+      // A signed figure that joins the group before it is left to the
+      // tagger. The lexicon takes a hyphen for a sign only on the head of a
+      // group (`isNumber`): anywhere else a slice that opens on one is a
+      // joiner and a number, "GPT-4". So such a figure has no reading, and
+      // re-tagged it would take its group to the fallback: "5+-3" would be
+      // `ˈimˌɛk`, where under the tagger's punctuation it is "five plus".
+      if EnglishG2P.isFigure(subtoken), !(joinsGroup && subtoken.hasPrefix("-")) {
         return "CD"
       }
       if pennTag == "CD", ["am", "pm", "AM", "PM"].contains(subtoken) {
@@ -587,10 +628,11 @@ final public class EnglishG2P {
       var subtokens: [MToken] = []
       if needsSplit {
         let parts = subtokenize(word: token.text)
+        let joinsGroup = (words.last as? [MToken])?.last?.whitespace.isEmpty == true
         subtokens = parts.map { part in
           let t = MToken(copying: token)
           let inherited = pennTags[ObjectIdentifier(token)]
-          if let refined = refinedPennTag(for: part, inherited: inherited) {
+          if let refined = refinedPennTag(for: part, inherited: inherited, joinsGroup: joinsGroup) {
             pennTags[ObjectIdentifier(t)] = refined
             t.tag = SpacyEnglishTagger.lexicalClass(for: refined)
           }
@@ -610,6 +652,24 @@ final public class EnglishG2P {
         }
       } else {
         subtokens = [token]
+        // A token kept whole for its shape is never cut, so no figure of its
+        // own is re-tagged (`isFigure`) and it kept the tagger's tag. Under
+        // punctuation it was read as its own dots ("Was it v2.0?" was `wˌʌz
+        // ɪt .?`), and under a noun's an amount dropped the currency in front
+        // of it ("$1.5B" had no "dollars", where "$1.5M", which spaCy cuts,
+        // has). One whose figure stands in front of its letters is a number,
+        // as a figure cut from a token is, whatever marks open it ("-1.5x",
+        // "+1.5B", "~.5x"). One that holds a figure behind a letter is a
+        // word, wherever the tagger would have it read as a mark or a dash: a
+        // number's tag there would make an amount of "$No.5".
+        if token.`_`.alias == nil, token.phonemes == nil, token.text.contains(where: \.isNumber) {
+          let opensOnFigure = token.text.first { $0.isLetter || $0.isNumber }?.isNumber == true
+          let tag = opensOnFigure ? "CD" : (isPunctuation(token) || token.tag == .dash ? "NN" : nil)
+          if let tag {
+            pennTags[ObjectIdentifier(token)] = tag
+            token.tag = SpacyEnglishTagger.lexicalClass(for: tag)
+          }
+        }
       }
       subtokens.last?.whitespace = token.whitespace
           
@@ -677,7 +737,9 @@ final public class EnglishG2P {
             // Given to one figure and no other. It used to stand until a
             // token that is no number came by, and a mark is not looked at
             // here, so the next figure across one was an amount too: "$120.50
-            // (2.3%)" read "two dollars and three cents percent".
+            // (2.3%)" read "two dollars and three cents percent". A signed
+            // figure escaped that only while the tagger called it a noun,
+            // which `refinedPennTag` no longer lets it.
             token.`_`.currency = currency
             currency = nil
           }
