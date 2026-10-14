@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-import MLXUtilsLibrary
 @testable import MisakiSwift
 
 /// The English frontend must not evaluate MLX.
@@ -19,11 +18,6 @@ import MLXUtilsLibrary
 /// "an MLXArray was evaluated" — and the failure it guards against is not a
 /// wrong answer but a crash on a device, hours into a background synthesis.
 @Suite struct MLXFreeFrontendTests {
-
-  /// `MLXUtilsLibrary` is deliberately allowed: it is imported only for
-  /// `MToken`, a plain class. Linking MLX costs binary size; *evaluating* it is
-  /// what the abort needs, and nothing here does.
-  private static let allowedImports = ["MLXUtilsLibrary"]
 
   private var sourcesDirectory: URL {
     URL(filePath: #filePath)
@@ -65,7 +59,7 @@ import MLXUtilsLibrary
         // `import struct MLX.MLXArray` names the module before the first dot.
         let module = String(rest.prefix { !$0.isWhitespace }).split(separator: ".").first.map(String.init) ?? ""
 
-        guard module.hasPrefix("MLX"), !Self.allowedImports.contains(module) else { continue }
+        guard module.hasPrefix("MLX") else { continue }
         offenders.append("\(url.lastPathComponent): \(module)")
       }
     }

@@ -1,11 +1,10 @@
 import Foundation
-import MLXUtilsLibrary
 
 /// Grapheme-to-phoneme for words no lexicon knows.
 ///
 /// The arithmetic lives in ``BARTNetwork`` and runs on Accelerate; this type
-/// owns the vocabulary either side of it. `MLXUtilsLibrary` is still imported,
-/// but only for `MToken` — nothing here evaluates an `MLXArray`, which is the
+/// owns the vocabulary either side of it. Nothing here evaluates an
+/// `MLXArray`, which is the
 /// property that lets a caller phonemize while synthesizing in the background.
 final class EnglishFallbackNetwork {
   static let unknownTokenId = 3

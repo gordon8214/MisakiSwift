@@ -1,5 +1,4 @@
 import Foundation
-import MLXUtilsLibrary
 
 // A forced span glued to other text inside one token.
 //

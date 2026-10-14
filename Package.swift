@@ -3,12 +3,8 @@
 
 import PackageDescription
 
-// Local fork of MisakiSwift 1.0.6 with two patches:
-//   1) resources use explicit per-file `.copy` entries so the emitted
-//      resource bundle is flat (iOS codesign rejects nested Resources/
-//      inside a BNDL).
-//   2) mlx-swift dep bumped to 0.31+ for the weakly-linked Metal error
-//      domains (upstream mlx-swift #354).
+// Contextual English frontend with Accelerate inference and frontend-owned tokens.
+// Explicit resource copies keep the iOS bundle flat.
 let package = Package(
   name: "MisakiSwift",
   platforms: [
@@ -21,19 +17,11 @@ let package = Package(
       targets: ["MisakiSwift"]
     ),
   ],
-  dependencies: [
-    .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.31.0"),
-    .package(url: "https://github.com/mlalma/MLXUtilsLibrary.git", exact: "0.0.6")
-  ],
   targets: [
     .target(
       name: "MisakiSwift",
-      dependencies: [
-        .product(name: "MLX", package: "mlx-swift"),
-        .product(name: "MLXNN", package: "mlx-swift"),
-        .product(name: "MLXUtilsLibrary", package: "MLXUtilsLibrary")
-     ],
      resources: [
+      .copy("../../Resources/MLXUtilsLibrary_LICENSE"),
       .copy("../../Resources/gb_bart.safetensors"),
       .copy("../../Resources/gb_bart_config.json"),
       .copy("../../Resources/gb_gold.json"),
@@ -53,8 +41,10 @@ let package = Package(
       name: "MisakiSwiftTests",
       dependencies: ["MisakiSwift"],
       resources: [
+      .copy("../../Resources/MLXUtilsLibrary_LICENSE"),
         .copy("Fixtures/spacy_parity_sentences.txt"),
-        .copy("Fixtures/spacy_parity_trace.json")
+        .copy("Fixtures/spacy_parity_trace.json"),
+        .copy("Fixtures/frontend_token_parity.json")
       ]
     ),
   ]

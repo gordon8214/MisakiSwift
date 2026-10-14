@@ -1,5 +1,4 @@
 import Foundation
-import MLXUtilsLibrary
 
 // A hyphenated compound the lexicon lists whole, read from its own entry.
 //
